@@ -1,4 +1,4 @@
-package nexus.market.exceptions;
+package nexus.market.domain.exceptions;
 
 /**
  * Se lanza cuando se intenta reservar o vender más existencias de las

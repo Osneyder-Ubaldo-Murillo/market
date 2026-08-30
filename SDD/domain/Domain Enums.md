@@ -2,7 +2,7 @@
 
 ## Introducción
 
-Los **enums técnicos** representan valores fijos sin metadata adicional de negocio (no heredan de `DomainCatalog`). Se utilizan para conceptos puramente técnicos o de infraestructura y residen en el paquete `com.nexusmarket.domain.enums`.
+Los **enums técnicos** representan valores fijos sin metadata adicional de negocio (no heredan de `DomainCatalog`). Se utilizan para conceptos puramente técnicos o de infraestructura y residen en el paquete `nexus.market.domain.enums`.
 
 > Los catálogos de negocio (`SystemRole`, `OrderStatus`, `ShippingStatus`, `ReturnReason`, etc.) **NO son enums de Java**: son clases inmutables que heredan de `DomainCatalog`. Consulte *Domain Value Objects.md*.
 

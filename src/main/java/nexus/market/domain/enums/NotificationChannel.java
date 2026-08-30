@@ -1,4 +1,4 @@
-package nexus.market.enums;
+package nexus.market.domain.enums;
 
 /**
  * Canal de notificación usado por el adaptador de notificaciones.

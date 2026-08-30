@@ -1,4 +1,4 @@
-package nexus.market.enums;
+package nexus.market.domain.enums;
 
 /**
  * Nivel de severidad de un evento de auditoría.

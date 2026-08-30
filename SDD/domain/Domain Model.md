@@ -2,7 +2,7 @@
 
 ## Introducción
 
-El modelo de dominio captura las entidades, agregados, objetos de valor y relaciones que representan el negocio de NexusMarket. Se basa en la especificación funcional y sigue los principios de Domain-Driven Design. Todos los modelos viven en `com.nexusmarket.domain.models` y **no tienen ninguna dependencia de frameworks** (Spring, JPA, etc.).
+El modelo de dominio captura las entidades, agregados, objetos de valor y relaciones que representan el negocio de NexusMarket. Se basa en la especificación funcional y sigue los principios de Domain-Driven Design. Todos los modelos viven en `nexus.market.domain.models` y **no tienen ninguna dependencia de frameworks** (Spring, JPA, etc.).
 
 ---
 

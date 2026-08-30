@@ -1,4 +1,4 @@
-package nexus.market.enums;
+package nexus.market.domain.enums;
 
 /**
  * Tipo de movimiento de inventario. Todo cambio de existencias en un

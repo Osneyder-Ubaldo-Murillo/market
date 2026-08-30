@@ -1,4 +1,4 @@
-package nexus.market.exceptions;
+package nexus.market.domain.exceptions;
 
 /**
  * Excepción base de negocio del dominio. Toda regla de negocio violada

@@ -2,7 +2,7 @@
 
 ## Introducción
 
-Las especificaciones encapsulan reglas de negocio reutilizables que pueden evaluarse en distintos contextos. Cada especificación expone `isSatisfiedBy(...)` (booleano). Viven en `com.nexusmarket.domain.specifications`.
+Las especificaciones encapsulan reglas de negocio reutilizables que pueden evaluarse en distintos contextos. Cada especificación expone `isSatisfiedBy(...)` (booleano). Viven en `nexus.market.domain.specifications`.
 
 > **Decisión de diseño**: las especificaciones que necesitan datos externos (`UniqueUserSpecification`, `ProductPublishableSpecification`) **no dependen de puertos de infraestructura**; definen interfaces funcionales anidadas (`UserLookup`, `InventoryRepository`) que el servicio o adaptador implementa. Esto mantiene el paquete `domain` 100% libre de frameworks.
 

@@ -60,7 +60,7 @@ Recurso externo (MySQL, MongoDB, pasarela de pagos, transportadora, etc.)
 
 
 ## Estructura de Paquetes (Java)
-com.nexusmarket
+nexus.market
 ├── NexusMarketApplication.java // Punto de entrada Spring Boot
 │
 ├── adapters
