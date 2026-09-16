@@ -79,7 +79,7 @@ public class Inventory {
     }
 
     /** Reserva existencias para un pedido en curso (no sobre DAMAGED ni más de lo disponible). */
-    public void reserve1(Quantity toReserve, Map<String, Object> metadata) {
+    public void reserve(Quantity toReserve, Map<String, Object> metadata) {
         requirePositive(toReserve, "La cantidad a reservar debe ser mayor que cero");
         if (status == InventoryStatus.DAMAGED) {
             throw new BusinessException("DAMAGED_INVENTORY",
@@ -95,7 +95,7 @@ public class Inventory {
     }
 
     /** Libera una reserva (pedido cancelado o reserva anulada). */
-    public void release1(Quantity toRelease, Map<String, Object> metadata) {
+    public void release(Quantity toRelease, Map<String, Object> metadata) {
         requirePositive(toRelease, "La cantidad a liberar debe ser mayor que cero");
         if (toRelease.isGreaterThan(reservedQuantity)) {
             throw new BusinessException("INVALID_RELEASE",
@@ -107,7 +107,7 @@ public class Inventory {
     }
 
     /** Salida definitiva por venta: descuenta de total y reserva; agota si llega a cero. */
-    public void confirmSale1(Quantity sold, Map<String, Object> metadata) {
+    public void confirmSale(Quantity sold, Map<String, Object> metadata) {
         requirePositive(sold, "La cantidad vendida debe ser mayor que cero");
         if (status == InventoryStatus.DAMAGED) {
             throw new BusinessException("DAMAGED_INVENTORY",

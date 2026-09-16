@@ -38,7 +38,7 @@ public class Order {
     private LocalDateTime updatedAt;
 
     public Order(OrderId orderId, BuyerId buyerId, List<OrderItem> items, OrderStatus status,
-                 Money total, Address shippingAddress, InvoiceId invoiceId,
+                 Address shippingAddress, InvoiceId invoiceId,
                  LocalDateTime deliveredAt, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.orderId = Objects.requireNonNull(orderId, "orderId es obligatorio");
         this.buyerId = Objects.requireNonNull(buyerId, "buyerId es obligatorio");
@@ -61,7 +61,7 @@ public class Order {
     public static Order create(BuyerId buyerId, List<OrderItem> items, Address shippingAddress) {
         LocalDateTime now = LocalDateTime.now();
         return new Order(OrderId.generate(), buyerId, items, OrderStatus.PENDING_PAYMENT,
-                null, shippingAddress, null, null, now, now);
+                shippingAddress, null, null, now, now);
     }
 
     /**

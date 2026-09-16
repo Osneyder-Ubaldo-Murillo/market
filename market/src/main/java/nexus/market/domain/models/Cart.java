@@ -33,7 +33,7 @@ public class Cart {
     private LocalDateTime updatedAt;
 
     public Cart(CartId cartId, BuyerId buyerId, Currency currency, List<CartItem> items,
-                Money total, LocalDateTime createdAt, LocalDateTime updatedAt) {
+                LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.cartId = Objects.requireNonNull(cartId, "cartId es obligatorio");
         this.buyerId = Objects.requireNonNull(buyerId, "buyerId es obligatorio");
         this.currency = Objects.requireNonNull(currency, "currency es obligatorio");
@@ -54,8 +54,7 @@ public class Cart {
      */
     public static Cart create(BuyerId buyerId, Currency currency) {
         LocalDateTime now = LocalDateTime.now();
-        return new Cart(CartId.generate(), buyerId, currency, List.of(),
-                Money.zero(currency), now, now);
+        return new Cart(CartId.generate(), buyerId, currency, List.of(), now, now);
     }
 
     /**

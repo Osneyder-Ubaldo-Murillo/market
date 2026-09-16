@@ -17,8 +17,11 @@ public final class Money {
     private final Currency currency;
 
     private Money(BigDecimal amount, Currency currency) {
+        if (amount.signum() < 0) {
+            throw new IllegalArgumentException("El monto no puede ser negativo");
+        }
         this.amount = amount.setScale(SCALE, RoundingMode.HALF_UP);
-        this.currency = currency;
+        this.currency = Objects.requireNonNull(currency, "currency es obligatorio");
     }
 
     public static Money of(BigDecimal amount, Currency currency) {
