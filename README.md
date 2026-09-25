@@ -104,11 +104,11 @@ SDD/Domain Model.md	Descripción detallada de agregados y entidades del dominio.
 SDD/Domain Value Objects.md	Catálogos de negocio y objetos de valor inmutables.
 SDD/Domain Enums.md	Enums técnicos para movimientos, canales y severidad.
 SDD/Domain Specifications.md	Reglas de negocio reutilizables (validaciones de inventario, usuarios, pedidos).
-SDD/Domain Services.md	Servicios de dominio (pendiente para siguiente entrega).
-SDD/Output Ports.md	Puertos de salida (pendiente para siguiente entrega).
+SDD/domain/Domain Services.md	Servicios de dominio (documentados; implementación en segunda entrega).
+SDD/Output Ports.md	Puertos de salida (documentados; implementación en segunda entrega).
 Estado del Proyecto
 Primera entrega completada: Models, Value Objects, Enums y Specifications.
-Segunda entrega (pendiente): 
+Segunda entrega: documentación de servicios de dominio y puertos de salida completada; implementación pendiente 
 Tercera entrega (pendiente): 
 
 Notas para Desarrolladores
