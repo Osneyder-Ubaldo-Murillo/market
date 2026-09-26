@@ -106,17 +106,23 @@ public class Inventory {
         recordMovement(InventoryMovementType.RELEASE, toRelease, metadata);
     }
 
-    /** Salida definitiva por venta: descuenta de total y reserva; agota si llega a cero. */
+    /**
+     * Salida definitiva por venta: descuenta de total y reserva; agota si llega a cero.
+     * <p>Corrección: la venta debe validarse contra la cantidad <em>reservada</em>
+     * (solo se puede confirmar la venta de lo previamente reservado). La versión
+     * anterior comprobaba contra {@code getAvailableQuantity()}, lo que impedía
+     * confirmar ventas cuando la reserva agotaba la disponibilidad.</p>
+     */
     public void confirmSale(Quantity sold, Map<String, Object> metadata) {
         requirePositive(sold, "La cantidad vendida debe ser mayor que cero");
         if (status == InventoryStatus.DAMAGED) {
             throw new BusinessException("DAMAGED_INVENTORY",
                     "No se puede vender inventario en estado DAMAGED.");
         }
-        if (sold.isGreaterThan(getAvailableQuantity())) {
+        if (sold.isGreaterThan(reservedQuantity)) {
             throw new InsufficientInventoryException(
-                    "No hay existencias suficientes para vender " + sold
-                            + "; disponible: " + getAvailableQuantity());
+                    "No hay existencias reservadas suficientes para vender " + sold
+                            + "; reservado: " + reservedQuantity);
         }
         this.quantity = quantity.subtract(sold);
         this.reservedQuantity = reservedQuantity.subtract(sold);

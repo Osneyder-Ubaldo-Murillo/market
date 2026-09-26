@@ -9,33 +9,40 @@ Este proyecto está construido siguiendo los principios de **Domain-Driven Desig
 ## Arquitectura del Proyecto
 
 La aplicación está organizada en las siguientes capas, siguiendo el patrón Hexagonal:
-src/main/java/nexus/market/
-├── adapters/ # Adaptadores de entrada (REST) y salida (Persistencia)
-│ ├── in/ # Controladores REST, DTOs de entrada/salida
-│ └── out/ # Implementaciones de persistencia (MySQL, MongoDB) y servicios externos
-├── domain/ # Núcleo del negocio (libre de frameworks)
-│ ├── models/ # Agregados y entidades (User, Order, Product, etc.)
-│ ├── valueobjects/ # Objetos inmutables (Email, Money, Address, SystemRole, etc.)
-│ ├── enums/ # Enums técnicos (InventoryMovementType, NotificationChannel, etc.)
-│ ├── specifications/ # Reglas de negocio reutilizables (AvailableInventorySpecification, etc.)
-│ ├── services/ # Servicios de dominio (OrderService, InventoryService, etc.)
-│ ├── ports/ # Puertos de entrada (casos de uso) y salida (repositorios)
-│ └── exceptions/ # Excepciones de negocio personalizadas
-└── infrastructure/ # Configuración de Spring, seguridad y bases de datos
 
+```
+src/main/java/nexus/market/
+├── adapters/          # Adaptadores de entrada (REST) y salida (persistencia) — pendiente
+│   ├── in/            # Controladores REST, DTOs de entrada/salida
+│   └── out/           # Implementaciones de persistencia (MySQL, MongoDB) y servicios externos
+├── domain/            # Núcleo del negocio (libre de frameworks)
+│   ├── models/        # Agregados y entidades (User, Order, Product, etc.)
+│   ├── valueobjects/  # Objetos inmutables (Email, Money, Address, SystemRole, etc.)
+│   ├── enums/         # Enums técnicos (InventoryMovementType, NotificationChannel, etc.)
+│   ├── specifications/# Reglas de negocio reutilizables (AvailableInventorySpecification, etc.)
+│   ├── services/      # Servicios de dominio (documentados; implementación pendiente)
+│   ├── ports/         # Puertos de entrada y salida (documentados; implementación pendiente)
+│   └── exceptions/    # Excepciones de negocio personalizadas
+└── infrastructure/    # Configuración de Spring, seguridad y bases de datos — pendiente
+```
 
 ### Flujo de Dependencias
 
 Todas las dependencias apuntan hacia el dominio:
-Controller (Adapter Entrada) → Puerto Entrada (Caso de Uso) → Servicio Dominio → Puerto Salida (Interfaz) → Adapter Salida (JPA/MongoDB) → Base de Datos
 
+```
+Controller (Adaptador Entrada) → Puerto Entrada (Caso de Uso) → Servicio Dominio →
+Puerto Salida (Interfaz) → Adaptador Salida (JPA/MongoDB) → Base de Datos
+```
 
-##  Tecnologías Utilizadas
+---
+
+## Tecnologías Utilizadas
 
 | Tecnología             | Versión   | Propósito |
 |------------------------|-----------|-----------|
 | **Java**               | 17        | Lenguaje base |
-| **Spring Boot**        | 3.x       | Framework de aplicación (Web, Security, JPA) |
+| **Spring Boot**        | 4.1.0     | Framework de aplicación (Web, Security, JPA) |
 | **Spring Data JPA**    | -         | Persistencia relacional (MySQL) |
 | **Spring Data MongoDB**| -         | Persistencia de auditoría (NoSQL) |
 | **MySQL**              | 8.x       | Base de datos principal |
@@ -44,40 +51,46 @@ Controller (Adapter Entrada) → Puerto Entrada (Caso de Uso) → Servicio Domin
 | **Lombok**             | -         | Reducción de código boilerplate |
 | **Maven**              | 3.9+      | Gestor de dependencias y construcción |
 
+---
 
-##  Entregable Actual: Primera Fase
+## Entregable Actual
 
-En esta primera entrega se ha implementado el **núcleo del dominio**:
+Se ha implementado el **núcleo del dominio** y su **suite de pruebas**:
 
 | Componente              | Ubicación                                               | Cantidad |
 |-------------------------|---------------------------------------------------------|----------|
 | **Models (Agregados)**  | `nexus.market.domain.models`                            | 12       |
-| **Value Objects**       | `nexus.market.domain.valueobjects` (incluye catálogos)  | 34       |
+| **Value Objects**       | `nexus.market.domain.valueobjects` (incluye catálogos)  | 46       |
 | **Enums Técnicos**      | `nexus.market.domain.enums`                             | 3        |
 | **Specifications**      | `nexus.market.domain.specifications`                    | 7        |
+| **Exceptions**          | `nexus.market.domain.exceptions`                        | 4        |
+| **Tests de dominio**    | `src/test/java/nexus/market/domain`                     | 52       |
 
-**Total de clases generadas:** ~56
+**Total de clases del dominio:** 73
 
+---
 
-##  Cómo Ejecutar el Proyecto (Local)
+## Cómo Ejecutar el Proyecto (Local)
 
 ### Prerrequisitos
 
 - **JDK 17** instalado.
-- **Maven** 3.9+ instalado.
-- **MySQL** 8+ corriendo en `localhost:3306`.
-- **MongoDB** 6+ corriendo en `localhost:27017`.
+- **Maven** 3.9+ instalado (o usa el wrapper `./mvnw.cmd`).
+- **MySQL** 8+ corriendo en `localhost:3306` (cuando existan los adaptadores).
+- **MongoDB** 6+ corriendo en `localhost:27017` (cuando existan los adaptadores).
 
 ### 1. Clonar el repositorio
 
-```bash´´´
+```bash
 git clone https://github.com/Osneyder-Ubaldo-Murillo/market
-cd nexusmarket
-2. Configurar las variables de entorno (o application.properties)
+cd market
+```
 
-Crea un archivo src/main/resources/application.properties o application.yml con las siguientes propiedades:
+### 2. Configurar las variables de entorno (o `application.properties`)
 
-properties
+Crea o ajusta `src/main/resources/application.properties` con las siguientes propiedades (cuando se implementen los adaptadores de persistencia, y **quitando** las exclusiones de auto-configuración actuales):
+
+```properties
 # MySQL
 spring.datasource.url=jdbc:mysql://localhost:3306/nexusmarket?useSSL=false&serverTimezone=UTC
 spring.datasource.username=root
@@ -91,38 +104,62 @@ spring.data.mongodb.uri=mongodb://localhost:27017/nexusmarket_audit
 # JWT (secrets)
 jwt.secret=your_super_secret_key_123456
 jwt.expiration=86400000
-3. Compilar y ejecutar
-bash
+```
+
+### 3. Compilar y ejecutar
+
+```bash
 mvn clean install
 mvn spring-boot:run
+```
+
 La aplicación estará disponible en: http://localhost:8080
 
-Documentación de Referencia
-Archivo	Descripción
-SDD/Software Architecture.md	Definición de la arquitectura hexagonal, principios y restricciones.
-SDD/Domain Model.md	Descripción detallada de agregados y entidades del dominio.
-SDD/Domain Value Objects.md	Catálogos de negocio y objetos de valor inmutables.
-SDD/Domain Enums.md	Enums técnicos para movimientos, canales y severidad.
-SDD/Domain Specifications.md	Reglas de negocio reutilizables (validaciones de inventario, usuarios, pedidos).
-SDD/domain/Domain Services.md	Servicios de dominio (documentados; implementación en segunda entrega).
-SDD/Output Ports.md	Puertos de salida (documentados; implementación en segunda entrega).
-Estado del Proyecto
-Primera entrega completada: Models, Value Objects, Enums y Specifications.
-Segunda entrega: documentación de servicios de dominio y puertos de salida completada; implementación pendiente 
-Tercera entrega (pendiente): 
+---
+## Cómo Ejecutar las Pruebas
 
-Notas para Desarrolladores
-El paquete domain NO DEBE contener ninguna dependencia de Spring, JPA, ni MongoDB.
+```bash
+cd market
+./mvnw.cmd clean test
+```
 
-Los Value Objects son inmutables y tienen su propia lógica de validación.
+> Mientras no existan adaptadores de persistencia, Spring arranca sin DataSource
+> (exclusiones en `application.properties`). Al implementar los adaptadores hay
+> que quitar esas exclusiones y declarar la conexión.
 
-Los catálogos de negocio (SystemRole, OrderStatus, etc.) NO son enums de Java, sino clases que extienden DomainCatalog. Solo los enums técnicos (InventoryMovementType, etc.) son enums de Java.
+---
 
-Las specifications pueden inyectar repositorios (puertos) para validar reglas que requieren consultas a la base de datos.
+## Documentación de Referencia
 
-Contribuciones
-Este proyecto es de carácter educativo y está siendo desarrollado siguiendo las mejores prácticas de ingeniería de software.
-Si deseas contribuir o reportar un error, por favor abre un issue o un pull request.
+| Archivo | Descripción |
+|---------|-------------|
+| `DIAGNOSTICO.md` | Diagnóstico del proyecto: fallos corregidos y hoja de ruta pendiente. |
+| `SDD/Software Architecture.md` | Definición de la arquitectura hexagonal, principios y restricciones. |
+| `SDD/Domain Model.md` | Descripción detallada de agregados y entidades del dominio. |
+| `SDD/Domain Value Objects.md` | Catálogos de negocio y objetos de valor inmutables. |
+| `SDD/Domain Enums.md` | Enums técnicos para movimientos, canales y severidad. |
+| `SDD/Domain Specifications.md` | Reglas de negocio reutilizables (validaciones de inventario, usuarios, pedidos). |
+| `SDD/domain/Domain Services.md` | Servicios de dominio (documentados; implementación pendiente). |
+| `SDD/Output Ports.md` | Puertos de salida (documentados; implementación pendiente). |
 
-Licencia
+## Estado del Proyecto
+
+- **Primera entrega completada**: Models, Value Objects, Enums, Specifications y Exceptions.
+- **Segunda entrega completada**: documentación de servicios de dominio y puertos de salida (implementación pendiente).
+- **Revisión (25/09/2026)**: corrección del arranque de Spring, bug `Inventory.confirmSale` resuelto, catálogo `OperationType` completado y **52 tests de dominio pasando** (ver `DIAGNOSTICO.md`).
+- **Tercera entrega (pendiente)**: servicios de dominio, puertos de salida, adaptadores y capa de aplicación.
+
+## Notas para Desarrolladores
+
+- El paquete `domain` **NO DEBE** contener ninguna dependencia de Spring, JPA ni MongoDB.
+- Los Value Objects son inmutables y tienen su propia lógica de validación.
+- Los catálogos de negocio (`SystemRole`, `OrderStatus`, etc.) **NO son enums de Java**, sino clases que extienden `DomainCatalog`. Solo los enums técnicos (`InventoryMovementType`, etc.) son enums de Java.
+- Las specifications pueden inyectar repositorios (puertos) para validar reglas que requieren consultas a la base de datos (`UserLookup`, `InventoryRepository`).
+
+## Contribuciones
+
+Este proyecto es de carácter educativo y está siendo desarrollado siguiendo las mejores prácticas de ingeniería de software. Si deseas contribuir o reportar un error, por favor abre un issue o un pull request.
+
+## Licencia
+
 Este proyecto se encuentra bajo la licencia MIT.

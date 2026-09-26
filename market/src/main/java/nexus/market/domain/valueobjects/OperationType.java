@@ -11,6 +11,13 @@ public final class OperationType extends DomainCatalog {
     public static final OperationType SELLER_REGISTRATION = new OperationType("SELLER_REGISTRATION", "Registro de Vendedor", "Registro de un vendedor");
     public static final OperationType BUYER_REGISTRATION = new OperationType("BUYER_REGISTRATION", "Registro de Comprador", "Registro de un comprador");
 
+    // Códigos agregados en la corrección: la SDD (Domain Services.md) los marca
+    // como pendientes para la administración de usuarios y aprobación de vendedores.
+    public static final OperationType SELLER_APPROVAL = new OperationType("SELLER_APPROVAL", "Aprobación de Vendedor", "Aprobación de la verificación de un vendedor");
+    public static final OperationType USER_BLOCK = new OperationType("USER_BLOCK", "Bloqueo de Usuario", "Bloqueo de un usuario");
+    public static final OperationType USER_ACTIVATION = new OperationType("USER_ACTIVATION", "Activación de Usuario", "Reactivación de un usuario bloqueado");
+    public static final OperationType USER_DEACTIVATION = new OperationType("USER_DEACTIVATION", "Desactivación de Usuario", "Desactivación de un usuario activo");
+
     public static final OperationType PRODUCT_CREATION = new OperationType("PRODUCT_CREATION", "Creación de Producto", "Creación de un producto");
     public static final OperationType PRODUCT_UPDATE = new OperationType("PRODUCT_UPDATE", "Actualización de Producto", "Actualización de un producto");
     public static final OperationType PRODUCT_PUBLISH = new OperationType("PRODUCT_PUBLISH", "Publicación de Producto", "Publicación de un producto");
@@ -21,6 +28,10 @@ public final class OperationType extends DomainCatalog {
     public static final OperationType INVENTORY_CONFIRM_SALE = new OperationType("INVENTORY_CONFIRM_SALE", "Confirmación de Venta", "Salida definitiva por venta");
     public static final OperationType INVENTORY_RELEASE = new OperationType("INVENTORY_RELEASE", "Liberación de Inventario", "Liberación de una reserva");
     public static final OperationType INVENTORY_ADJUST = new OperationType("INVENTORY_ADJUST", "Ajuste de Inventario", "Ajuste físico de existencias");
+
+    // Agregado en la corrección: coherente con InventoryMovementType.RETURN
+    // (recepción de mercancía por devolución; lo invoca ReturnRefundService.processReturn).
+    public static final OperationType INVENTORY_RETURN = new OperationType("INVENTORY_RETURN", "Devolución de Inventario", "Recepción de mercancía por devolución");
 
     public static final OperationType CART_ADD_ITEM = new OperationType("CART_ADD_ITEM", "Agregar Ítem al Carrito", "Se agrega un producto al carrito");
     public static final OperationType CART_REMOVE_ITEM = new OperationType("CART_REMOVE_ITEM", "Eliminar Ítem del Carrito", "Se elimina un producto del carrito");
