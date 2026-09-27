@@ -1,6 +1,6 @@
 # Diagnóstico del Proyecto NexusMarket
 
-**Fecha:** 25/09/2026
+**Fecha:** 25/09/2026 — **Actualizado:** 26/09/2026 (adaptadores de salida)
 **Rama:** `main`
 **Comando de verificación:** `cd market && ./mvnw.cmd clean test`
 
@@ -13,9 +13,11 @@
 | Compilación del dominio (73 fuentes, Java 17) | ✅ OK |
 | `MarketApplicationTests.contextLoads` (contexto Spring) | ✅ OK (corregido) |
 | Suite de pruebas del dominio (52 tests) | ✅ OK (corregido; 3 fallos iniciales resueltos) |
-| Servicios de dominio (`domain.services`) | ❌ No implementados (documentados en SDD) |
-| Puertos de salida (`domain.ports.out`) | ❌ No implementados (documentados en SDD) |
-| Adaptadores de entrada/salida (`adapters.*`) | ❌ No existen |
+| Servicios de dominio (`domain.services`) | ✅ Implementados (commit `297adac`) |
+| Puertos de salida (`domain.ports.out`) | ✅ Implementados (commit `297adac`) |
+| Adaptadores de salida (`adapters.out.*`) | ✅ Implementados (JPA/MySQL, MongoDB, pagos, envío, notificaciones, seguridad, configuración) |
+| Tests de integración JPA (H2) + adaptadores externos | ✅ 9 tests nuevos — **61 tests totales, 0 fallos** |
+| Adaptadores de entrada (`adapters.in.*`) | ❌ No existen |
 | Capa de aplicación / infraestructura | ❌ No existe |
 
 ---
@@ -76,10 +78,12 @@
 
 ## 3. Qué falta según la SDD (hoja de ruta)
 
-La SDD (segunda entrega) documenta los servicios y puertos, pero **su
-implementación está pendiente** (`README.md` lo confirma). Inventario de pendientes:
+La SDD (segunda entrega) documenta los servicios y puertos. **Estado actual:**
+servicios y puertos implementados (commit `297adac`); **adaptadores de salida
+implementados** (persistencia JPA/MySQL con Hibernate, auditoría MongoDB y
+adaptadores externos). Inventario de pendientes:
 
-### 3.1 Servicios de dominio (`nexus.market.domain.services`) — 9 pendientes
+### 3.1 Servicios de dominio (`nexus.market.domain.services`) — ✅ Implementados (9)
 
 | Servicio | Dependencias de puertos principales |
 |----------|-------------------------------------|
@@ -93,7 +97,7 @@ implementación está pendiente** (`README.md` lo confirma). Inventario de pendi
 | `InvoiceService` | `InvoiceRepositoryPort`, `OrderRepositoryPort`, `ProductRepositoryPort` |
 | `AuditService` | `AuditLogRepositoryPort` |
 
-### 3.2 Puertos de salida (`nexus.market.domain.ports.out`) — pendientes
+### 3.2 Puertos de salida (`nexus.market.domain.ports.out`) — ✅ Implementados (19)
 
 `UserRepositoryPort`, `BuyerRepositoryPort`, `SellerRepositoryPort`,
 `WarehouseRepositoryPort`, `ProductRepositoryPort`, `InventoryRepositoryPort`,
@@ -107,20 +111,28 @@ implementación está pendiente** (`README.md` lo confirma). Inventario de pendi
 > `ProductPublishableSpecification.InventoryRepository` no son puertos adicionales;
 > son vistas funcionales que los adaptadores implementan y ya existen en el código.
 
-### 3.3 Adaptadores (`adapters`) — no existen
+### 3.3 Adaptadores (`adapters`) — salida ✅ / entrada ❌
 
-- `adapters.in.*` — controladores REST / DTOs / validación de entrada.
-- `adapters.out.persistence.mysql` — implementaciones JPA de los repositorios.
-- `adapters.out.persistence.mongodb` — `AuditLogRepositoryPort`.
-- `adapters.out.*` — pasarela de pagos, transportadora, notificaciones,
-  seguridad (BCrypt, JWT), configuración.
+- ✅ `adapters.out.persistence.mysql` — los 12 repositorios implementados con JPA
+  puro (`EntityManagerFactory`), entidades + mapeo dominio↔persistencia en cada
+  archivo `*Persistence.java`. **Activación:** perfil `jpa`
+  (`application-jpa.properties`: MySQL real; los tests usan H2 en memoria).
+- ✅ `adapters.out.persistence.mongodb` — `AuditLogRepositoryPort` con driver
+  oficial de MongoDB 5.8. **Activación:** perfil `mongodb`.
+- ✅ `adapters.out.*` externos — `LoggingPaymentServicePort` (pasarela simulada),
+  `SimulatedShippingProviderPort`, `LoggingNotificationPort`,
+  `BcryptPasswordServicePort`, `JwtJwtServicePort` (HS256, `com.auth0:java-jwt`),
+  `PropertyBusinessConfigurationPort` (propiedades `nexusmarket.*`).
+- ❌ `adapters.in.*` — controladores REST / DTOs / validación de entrada.
 
 ### 3.4 Infraestructura / aplicación
 
-- Configuración de seguridad (Spring Security + JWT).
+- Configuración de seguridad (Spring Security + JWT) — **parcial**: los adaptadores
+  BCrypt/JWT existen; falta el filtro/autorización HTTP.
 - Manejo global de `BusinessException` → código HTTP.
 - Validación de entrada y casos de uso (puertos de entrada).
-- `application.properties` con credenciales reales (al implementar adaptadores).
+- `application-jpa.properties` con credenciales reales para ejecución
+  con MySQL/MongoDB locales (ya creado; ajustar credenciales).
 
 ---
 
@@ -150,5 +162,6 @@ cd market
 ./mvnw.cmd clean test
 ```
 
-Resultado esperado: **52 tests, 0 fallos, 0 errores**, incluyendo
-`MarketApplicationTests.contextLoads`.
+Resultado esperado: **61 tests, 0 fallos, 0 errores**, incluyendo
+`MarketApplicationTests.contextLoads` (52 de dominio + 4 de adaptadores
+externos + 5 de integración JPA sobre H2).

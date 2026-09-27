@@ -12,16 +12,17 @@ La aplicación está organizada en las siguientes capas, siguiendo el patrón He
 
 ```
 src/main/java/nexus/market/
-├── adapters/          # Adaptadores de entrada (REST) y salida (persistencia) — pendiente
-│   ├── in/            # Controladores REST, DTOs de entrada/salida
-│   └── out/           # Implementaciones de persistencia (MySQL, MongoDB) y servicios externos
+├── adapters/          # Adaptadores de entrada (REST) y salida (persistencia/servicios)
+│   ├── in/            # Controladores REST, DTOs de entrada/salida — pendiente
+│   └── out/           # ✅ Implementados: persistence/mysql (JPA), persistence/mongodb
+│                      # (auditoría), payment, shipping, notification, security, config
 ├── domain/            # Núcleo del negocio (libre de frameworks)
 │   ├── models/        # Agregados y entidades (User, Order, Product, etc.)
 │   ├── valueobjects/  # Objetos inmutables (Email, Money, Address, SystemRole, etc.)
 │   ├── enums/         # Enums técnicos (InventoryMovementType, NotificationChannel, etc.)
 │   ├── specifications/# Reglas de negocio reutilizables (AvailableInventorySpecification, etc.)
-│   ├── services/      # Servicios de dominio (documentados; implementación pendiente)
-│   ├── ports/         # Puertos de entrada y salida (documentados; implementación pendiente)
+│   ├── services/      # ✅ Servicios de dominio (9 servicios, implementados)
+│   ├── ports/         # ✅ Puertos de salida (19 interfaces, implementadas)
 │   └── exceptions/    # Excepciones de negocio personalizadas
 └── infrastructure/    # Configuración de Spring, seguridad y bases de datos — pendiente
 ```
@@ -88,7 +89,8 @@ cd market
 
 ### 2. Configurar las variables de entorno (o `application.properties`)
 
-Crea o ajusta `src/main/resources/application.properties` con las siguientes propiedades (cuando se implementen los adaptadores de persistencia, y **quitando** las exclusiones de auto-configuración actuales):
+Para ejecutar con MySQL y MongoDB reales, usa el perfil `jpa` y ajusta
+`src/main/resources/application-jpa.properties` (ya incluye la conexión por defecto y limpia las exclusiones de auto-configuración):
 
 ```properties
 # MySQL
@@ -124,8 +126,10 @@ cd market
 ```
 
 > Mientras no existan adaptadores de persistencia, Spring arranca sin DataSource
-> (exclusiones en `application.properties`). Al implementar los adaptadores hay
-> que quitar esas exclusiones y declarar la conexión.
+> (exclusiones en `application.properties`). Los tests de integración JPA usan
+> H2 en memoria activando el perfil `jpa` con URL en memoria (ver
+> `JpaPersistenceIntegrationTest`). Para ejecutar contra MySQL real, usa el
+> perfil `jpa` con `application-jpa.properties`.
 
 ---
 
@@ -145,9 +149,26 @@ cd market
 ## Estado del Proyecto
 
 - **Primera entrega completada**: Models, Value Objects, Enums, Specifications y Exceptions.
-- **Segunda entrega completada**: documentación de servicios de dominio y puertos de salida (implementación pendiente).
+- **Segunda entrega completada**: documentación de servicios de dominio y puertos de salida.
 - **Revisión (25/09/2026)**: corrección del arranque de Spring, bug `Inventory.confirmSale` resuelto, catálogo `OperationType` completado y **52 tests de dominio pasando** (ver `DIAGNOSTICO.md`).
-- **Tercera entrega (pendiente)**: servicios de dominio, puertos de salida, adaptadores y capa de aplicación.
+- **Tercera entrega — parte 1 (26/09/2026)**: **9 servicios de dominio** y **19 puertos de salida** implementados.
+- **Tercera entrega — parte 2 (26/09/2026)**: **adaptadores de salida**:
+  - `adapters.out.persistence.mysql` — 12 repositorios JPA (entidades + mapeo en cada `*Persistence.java`), activados con el perfil `jpa`.
+  - `adapters.out.persistence.mongodb` — auditoría con el driver oficial de MongoDB, activado con el perfil `mongodb`.
+  - `adapters.out.payment|shipping|notification|security|config` — pasarela y transportadora simuladas, notificaciones por log, BCrypt, JWT (HS256) y configuración por propiedades.
+  - **61 tests, 0 fallos** (52 dominio + 4 adaptadores externos + 5 integración JPA sobre H2).
+- **Tercera entrega — pendiente**: adaptadores de entrada (`adapters.in.*`), capa de aplicación y configuración de seguridad HTTP.
+
+### Cómo ejecutar con base de datos real
+
+```bash
+cd market
+# Ajusta credenciales en src/main/resources/application-jpa.properties
+mvn spring-boot:run -Dspring-boot.run.profiles=jpa
+```
+
+> Sin el perfil `jpa`, Spring arranca sin DataSource (exclusiones en
+> `application.properties`) y solo se carga el dominio: útil para pruebas.
 
 ## Notas para Desarrolladores
 
