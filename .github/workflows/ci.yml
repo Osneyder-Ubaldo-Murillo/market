@@ -1,0 +1,248 @@
+name: CI/CD - NexusMarket
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  JAVA_VERSION: '17'
+  MAVEN_VERSION: '3.9.x'
+  # OWASP Dependency-Check: version fijada (no se resuelve "la ultima"). Umbral: falla con CVSS >= 7.0.
+  DEPENDENCY_CHECK_VERSION: '12.2.2'
+  IMAGE_NAME: osneydermurillo/nexusmarket
+
+# Detalle de secretos, criterios y como habilitar el despliegue: market/docs/CI_CD.md
+
+jobs:
+  # ------------------------------------------------------------------
+  # 1. Build, pruebas unitarias y pruebas de integracion con MySQL REAL
+  # ------------------------------------------------------------------
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./market
+
+    # Base de datos DESECHABLE del job (se destruye al terminar). Las credenciales son solo de prueba y no
+    # protegen ningun dato: el servicio no es accesible desde fuera del runner.
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-root-password
+          MYSQL_DATABASE: nexusmarket_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pci-only-root-password --silent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+
+    env:
+      # Contrato real de las pruebas (@EnabledIfEnvironmentVariable / @TestPropertySource): estas tres variables.
+      NEXUS_TEST_MYSQL_URL: jdbc:mysql://127.0.0.1:3306/nexusmarket_ci?sslMode=DISABLED&allowPublicKeyRetrieval=true
+      NEXUS_TEST_MYSQL_USER: root
+      NEXUS_TEST_MYSQL_PASSWORD: ci-only-root-password
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Dar permisos al wrapper Maven
+        run: chmod +x mvnw
+
+      - name: Esperar a que MySQL acepte conexiones
+        run: timeout 120 bash -c 'until (echo > /dev/tcp/127.0.0.1/3306) 2>/dev/null; do sleep 2; done'
+
+      - name: Compilar proyecto
+        run: ./mvnw compile -DskipTests -q
+
+      - name: Ejecutar pruebas unitarias y de integración (H2 y MySQL real)
+        # Sin -Dspring.profiles.active=jpa: forzar ese perfil rompe MarketApplicationTests y BootstrapAdminStartupTest
+        # (verificado en local); las pruebas declaran sus propios perfiles y propiedades.
+        run: ./mvnw -B -ntp test
+
+      - name: Verificar que las pruebas MySQL se ejecutaron (ninguna omitida)
+        run: bash ../scripts/ci/verify-mysql-tests-ran.sh target/surefire-reports
+
+      - name: Subir resultados de pruebas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: market/target/surefire-reports/
+          if-no-files-found: warn
+          retention-days: 14
+
+  # ------------------------------------------------------------------
+  # 2. Analisis de dependencias vulnerables (OWASP Dependency-Check)
+  #    BLOQUEA el workflow: sin clave de NVD, con errores de descarga/analisis o con CVSS >= 7.
+  # ------------------------------------------------------------------
+  dependency-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./market
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Verificar que existe la clave de la API de NVD
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          if [ -z "$NVD_API_KEY" ]; then
+            echo "::error::Falta el secreto NVD_API_KEY. Sin él no se puede descargar la base de vulnerabilidades; el análisis NO se da por satisfactorio."
+            exit 1
+          fi
+
+      - name: Cache de la base de datos de vulnerabilidades
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/dependency-check-data
+          key: dependency-check-data-${{ github.run_id }}
+          restore-keys: dependency-check-data-
+
+      - name: Ejecutar OWASP Dependency-Check ${{ env.DEPENDENCY_CHECK_VERSION }}
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: >-
+          ./mvnw -B -ntp
+          org.owasp:dependency-check-maven:${{ env.DEPENDENCY_CHECK_VERSION }}:check
+          -DfailBuildOnCVSS=7
+          -DfailOnError=true
+          -DnvdApiKeyEnvironmentVariable=NVD_API_KEY
+          -DdataDirectory=${{ runner.temp }}/dependency-check-data
+          -DossIndexAnalyzerEnabled=false
+          -DnodeAuditAnalyzerEnabled=false
+          -DretireJsAnalyzerEnabled=false
+
+      - name: Subir informe de Dependency-Check
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: market/target/dependency-check-report.*
+          if-no-files-found: warn
+          retention-days: 14
+
+  # ------------------------------------------------------------------
+  # 3. Verificacion de la imagen Docker (NO publica): construye, arranca con MySQL y MongoDB desechables,
+  #    comprueba la salud y analiza vulnerabilidades con Trivy (HIGH/CRITICAL corregibles bloquean).
+  # ------------------------------------------------------------------
+  image-verify:
+    needs: [build-and-test]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Construir la imagen (solo local en el runner)
+        run: docker build -t nexusmarket:ci -f Dockerfile .
+
+      - name: Prueba de arranque y salud de la imagen
+        run: bash scripts/ci/smoke-test-image.sh nexusmarket:ci
+
+      - name: Exportar la imagen verificada
+        run: docker save nexusmarket:ci -o "${{ runner.temp }}/nexusmarket-image.tar"
+
+      - name: Analizar vulnerabilidades de la imagen (Trivy)
+        run: bash scripts/ci/scan-image.sh "${{ runner.temp }}/nexusmarket-image.tar"
+
+      - name: Guardar la imagen verificada para su publicación
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-image
+          path: ${{ runner.temp }}/nexusmarket-image.tar
+          retention-days: 1
+
+  # ------------------------------------------------------------------
+  # 4. Publicacion en Docker Hub (solo push a main). Publica EXACTAMENTE la imagen verificada en el job anterior
+  #    y solo si pasaron pruebas (incluidas las de MySQL), Dependency-Check y la verificacion de la imagen.
+  # ------------------------------------------------------------------
+  build-docker:
+    needs: [build-and-test, dependency-check, image-verify]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Verificar secretos de Docker Hub (publicación bloqueada si faltan)
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "::error::Faltan DOCKERHUB_USERNAME o DOCKERHUB_TOKEN. La publicación queda bloqueada."
+            exit 1
+          fi
+
+      - name: Descargar la imagen verificada
+        uses: actions/download-artifact@v4
+        with:
+          name: verified-image
+          path: ${{ runner.temp }}
+
+      - name: Cargar la imagen verificada
+        run: docker load -i "${{ runner.temp }}/nexusmarket-image.tar"
+
+      - name: Login a Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extraer metadata de Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Publicar la imagen verificada
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            docker tag nexusmarket:ci "$tag"
+            docker push "$tag"
+          done <<< "$TAGS"
+
+  # ------------------------------------------------------------------
+  # 5. Despliegue en staging: DESHABILITADO. No hay entorno de despliegue ni credenciales aprobados, y este
+  #    workflow no debe informar de un despliegue que no ocurre. Si alguien lo habilita sin implementarlo, FALLA.
+  #    Como habilitarlo: market/docs/CI_CD.md, seccion "Despliegue".
+  # ------------------------------------------------------------------
+  deploy-staging:
+    needs: [build-docker]
+    runs-on: ubuntu-latest
+    if: ${{ false }}
+
+    steps:
+      - name: Despliegue no implementado
+        run: |
+          echo "::error::El despliegue a staging no está implementado. Ver market/docs/CI_CD.md."
+          exit 1
