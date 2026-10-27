@@ -1,0 +1,107 @@
+version: "3.9"
+
+services:
+  # ------------------------------------------------------------------
+  # Base de datos principal (MySQL 8)
+  # ------------------------------------------------------------------
+  mysql:
+    image: mysql:8.0
+    container_name: nexusmarket-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Defina MYSQL_ROOT_PASSWORD en .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-nexusmarket}
+      MYSQL_USER: ${MYSQL_USER:?Defina MYSQL_USER en .env}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Defina MYSQL_PASSWORD en .env}
+    ports:
+      # Solo accesible desde la propia máquina; la app usa la red interna de Compose.
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - nexusmarket_mysql_data:/var/lib/mysql
+      # Sin montaje en docker-entrypoint-initdb.d: el esquema lo crea Flyway (classpath:db/schema).
+      # Montar db/migration ejecutaría V1 (roto) y V2 (semilla con credenciales conocidas).
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # ------------------------------------------------------------------
+  # Base de datos de auditoría (MongoDB 6)
+  # ------------------------------------------------------------------
+  mongodb:
+    image: mongo:6.0
+    container_name: nexusmarket-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: nexusmarket_audit
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:?Defina MONGO_USER en .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?Defina MONGO_PASSWORD en .env}
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - nexusmarket_mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet -u \"$$MONGO_INITDB_ROOT_USERNAME\" -p \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval \"db.runCommand({ping:1}).ok\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # ------------------------------------------------------------------
+  # Aplicación NexusMarket (Spring Boot)
+  # ------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nexusmarket-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: jpa,prod
+      # MySQL: usuario de aplicación (no root) y contraseña obligatorios, desde .env.
+      # sslMode=REQUIRED: cifra la conexión con TLS (MySQL 8 genera su certificado) y permite la autenticación
+      # caching_sha2_password sin allowPublicKeyRetrieval. NO valida la identidad del certificado del servidor:
+      # protege frente a escuchas pasivas, no frente a un intermediario activo. No desactive el cifrado.
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-nexusmarket}?sslMode=REQUIRED&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:?Defina MYSQL_USER en .env}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:?Defina MYSQL_PASSWORD en .env}
+      # MongoDB: use valores sin caracteres reservados de URI (p. ej. openssl rand -hex 16).
+      SPRING_MONGODB_URI: mongodb://${MONGO_USER:?Defina MONGO_USER en .env}:${MONGO_PASSWORD:?Defina MONGO_PASSWORD en .env}@mongodb:27017/nexusmarket_audit?authSource=admin
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET en .env (openssl rand -base64 48)}
+      JWT_ISSUER: nexusmarket
+      JWT_EXPIRATION: 86400000
+      SERVER_PORT: 8080
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: never
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+      # Administrador inicial: DESHABILITADO por defecto. Ver market/docs/ADMIN_INICIAL_ACTIVACION.md.
+      # Activar solo en el primer arranque; la contraseña se entrega preferentemente por archivo de secreto.
+      NEXUSMARKET_BOOTSTRAP_ADMIN_ENABLED: ${NEXUSMARKET_BOOTSTRAP_ADMIN_ENABLED:-false}
+      NEXUSMARKET_BOOTSTRAP_ADMIN_EMAIL: ${NEXUSMARKET_BOOTSTRAP_ADMIN_EMAIL:-}
+      NEXUSMARKET_BOOTSTRAP_ADMIN_FULL_NAME: ${NEXUSMARKET_BOOTSTRAP_ADMIN_FULL_NAME:-}
+      NEXUSMARKET_BOOTSTRAP_ADMIN_DOCUMENT_ID: ${NEXUSMARKET_BOOTSTRAP_ADMIN_DOCUMENT_ID:-}
+      NEXUSMARKET_BOOTSTRAP_ADMIN_PASSWORD_FILE: ${NEXUSMARKET_BOOTSTRAP_ADMIN_PASSWORD_FILE:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  nexusmarket_mysql_data:
+  nexusmarket_mongodb_data:
+
+networks:
+  default:
+    name: nexusmarket-network
