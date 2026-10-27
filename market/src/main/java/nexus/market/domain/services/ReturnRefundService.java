@@ -140,7 +140,7 @@ public class ReturnRefundService {
         Order order = orders.findById(aReturn.getOrderId())
                 .orElseThrow(() -> new BusinessException("ORDER_NOT_FOUND", "Pedido inexistente."));
         String reference = returnId.toString();
-        for (ReturnItem item : aReturn.getItems()) {
+        for (ReturnItem item : OrderService.inLockOrder(aReturn.getItems(), ReturnItem::getProductId)) {
             // La reposición aplica solo a productos físicos: el tipo se resuelve
             // desde los ítems del pedido (ReturnItem no transporta ProductType).
             boolean physical = order.getItems().stream().anyMatch(oi ->

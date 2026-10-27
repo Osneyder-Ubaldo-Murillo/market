@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class ExternalAdaptersTest {
 
-    private static final String JWT_SECRET = "test-secret-1234567890abcdef";
+    private static final String JWT_SECRET = "test-secret-1234567890abcdef-0123456789";
 
     @Test
     void bcryptHashYVerificacion() {

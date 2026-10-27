@@ -126,7 +126,9 @@ class JpaOrderRepositoryPort extends JpaRepositorySupport implements OrderReposi
 
     @Override
     public Optional<Order> findById(OrderId orderId) {
-        return find(OrderEntity.class, orderId.value()).map(OrderEntity::toDomain);
+        // Fila bloqueada dentro de una transacción (primer bloqueo del orden global; ver
+        // docs/CONCURRENCIA_BLOQUEOS.md): dos operaciones sobre el mismo pedido se serializan.
+        return findForUpdate(OrderEntity.class, orderId.value()).map(OrderEntity::toDomain);
     }
 
     @Override

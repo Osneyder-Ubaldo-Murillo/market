@@ -65,6 +65,14 @@ public class Order {
     }
 
     /**
+     * Exige {@code PENDING_PAYMENT} sin cambiar el estado: se usa ANTES de cobrar en la pasarela, para
+     * que un pago repetido falle sin llegar a cobrar.
+     */
+    public void requirePendingPayment() {
+        requireStatus(OrderStatus.PENDING_PAYMENT);
+    }
+
+    /**
      * {@code PENDING_PAYMENT → PAID}.
      */
     public void confirmPayment() {

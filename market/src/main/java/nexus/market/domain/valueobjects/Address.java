@@ -41,6 +41,14 @@ public final class Address {
         requireNotBlank(state, "state");
         requireNotBlank(country, "country");
 
+        requireMaxLength(street, 120, "street");
+        requireMaxLength(number, 30, "number");
+        requireMaxLength(complement, 120, "complement");
+        requireMaxLength(neighborhood, 120, "neighborhood");
+        requireMaxLength(city, 80, "city");
+        requireMaxLength(state, 80, "state");
+        requireMaxLength(country, 80, "country");
+
         if (postalCode == null || postalCode.isBlank()) {
             throw new IllegalArgumentException("postalCode es obligatorio");
         }
@@ -53,6 +61,14 @@ public final class Address {
                 (complement == null) ? "" : complement.trim(),
                 neighborhood.trim(), city.trim(), state.trim(),
                 postalCode.trim(), country.trim());
+    }
+
+    /** Límites = longitudes de las columnas de dirección (buyers, orders, warehouses...). */
+    private static void requireMaxLength(String value, int max, String field) {
+        if (value != null && value.trim().length() > max) {
+            throw new IllegalArgumentException(
+                    field + " no puede superar los " + max + " caracteres en la dirección");
+        }
     }
 
     private static void requireNotBlank(String value, String field) {

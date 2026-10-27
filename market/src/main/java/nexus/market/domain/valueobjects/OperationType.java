@@ -18,6 +18,10 @@ public final class OperationType extends DomainCatalog {
     public static final OperationType USER_ACTIVATION = new OperationType("USER_ACTIVATION", "Activación de Usuario", "Reactivación de un usuario bloqueado");
     public static final OperationType USER_DEACTIVATION = new OperationType("USER_DEACTIVATION", "Desactivación de Usuario", "Desactivación de un usuario activo");
 
+    // Rotación de la contraseña del administrador (auditoría sin contraseñas ni hashes).
+    public static final OperationType PASSWORD_CHANGE = new OperationType("PASSWORD_CHANGE", "Cambio de Contraseña", "Cambio de la contraseña de un administrador");
+    public static final OperationType PASSWORD_CHANGE_FAILED = new OperationType("PASSWORD_CHANGE_FAILED", "Cambio de Contraseña Fallido", "Intento fallido de cambio de contraseña (contraseña actual incorrecta)");
+
     public static final OperationType PRODUCT_CREATION = new OperationType("PRODUCT_CREATION", "Creación de Producto", "Creación de un producto");
     public static final OperationType PRODUCT_UPDATE = new OperationType("PRODUCT_UPDATE", "Actualización de Producto", "Actualización de un producto");
     public static final OperationType PRODUCT_PUBLISH = new OperationType("PRODUCT_PUBLISH", "Publicación de Producto", "Publicación de un producto");

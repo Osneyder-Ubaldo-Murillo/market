@@ -110,15 +110,24 @@ class JpaInventoryRepositoryPort extends JpaRepositorySupport implements Invento
 
     @Override
     public Optional<Inventory> findById(InventoryId inventoryId) {
-        return find(InventoryEntity.class, inventoryId.value()).map(InventoryEntity::toDomain);
+        // Fila bloqueada dentro de una transacción: todo caso de uso transaccional que carga un inventario
+        // lo hace para modificarlo (ver docs/CONCURRENCIA_BLOQUEOS.md).
+        return findForUpdate(InventoryEntity.class, inventoryId.value()).map(InventoryEntity::toDomain);
     }
 
     @Override
     public List<Inventory> findByProductId(ProductId productId) {
-        return query(InventoryEntity.class,
-                "select i from InventoryEntity i where i.productId = :pid",
-                Map.of("pid", productId.value()))
-                .stream().map(InventoryEntity::toDomain).collect(Collectors.toList());
+        // Paso 1 (sin bloqueo): solo los ids, en orden ascendente. `product_id` no tiene índice: un
+        // SELECT ... FOR UPDATE por ese predicado bloquearía TODA la tabla (REPEATABLE READ).
+        List<String> ids = query(String.class,
+                "select i.inventoryId from InventoryEntity i where i.productId = :pid order by i.inventoryId",
+                Map.of("pid", productId.value()));
+        // Paso 2: bloqueo por clave primaria, siempre en orden ascendente de inventory_id.
+        List<Inventory> result = new java.util.ArrayList<>();
+        for (String id : ids) {
+            findForUpdate(InventoryEntity.class, id).map(InventoryEntity::toDomain).ifPresent(result::add);
+        }
+        return result;
     }
 
     @Override

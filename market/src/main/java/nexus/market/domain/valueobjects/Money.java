@@ -12,6 +12,8 @@ import java.util.Objects;
 public final class Money {
 
     private static final int SCALE = 2;
+    /** Máximo representable en las columnas decimal(15,2). */
+    private static final BigDecimal MAX_AMOUNT = new BigDecimal("9999999999999.99");
 
     private final BigDecimal amount;
     private final Currency currency;
@@ -21,6 +23,9 @@ public final class Money {
             throw new IllegalArgumentException("El monto no puede ser negativo");
         }
         this.amount = amount.setScale(SCALE, RoundingMode.HALF_UP);
+        if (this.amount.compareTo(MAX_AMOUNT) > 0) {
+            throw new IllegalArgumentException("El monto excede el máximo permitido");
+        }
         this.currency = Objects.requireNonNull(currency, "currency es obligatorio");
     }
 

@@ -13,6 +13,9 @@ public final class Email {
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
             "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
 
+    /** Longitud de la columna {@code users.email}. */
+    public static final int MAX_LENGTH = 160;
+
     private final String value;
 
     private Email(String value) {
@@ -24,6 +27,10 @@ public final class Email {
             throw new IllegalArgumentException("El correo electrónico no puede ser nulo ni vacío");
         }
         String normalized = value.trim().toLowerCase();
+        if (normalized.length() > MAX_LENGTH) {
+            throw new IllegalArgumentException(
+                    "El correo electrónico no puede superar los " + MAX_LENGTH + " caracteres");
+        }
         if (!EMAIL_PATTERN.matcher(normalized).matches()) {
             throw new IllegalArgumentException("Formato de correo electrónico inválido: " + value);
         }

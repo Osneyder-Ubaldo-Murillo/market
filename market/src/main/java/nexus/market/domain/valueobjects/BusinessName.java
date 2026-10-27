@@ -14,6 +14,9 @@ public final class BusinessName {
         this.value = value;
     }
 
+    /** Longitud de la columna {@code sellers.business_name}. */
+    public static final int MAX_LENGTH = 160;
+
     public static BusinessName of(String value) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("La razón social no puede ser nula ni vacía");
@@ -22,8 +25,9 @@ public final class BusinessName {
         if (trimmed.length() < 3) {
             throw new IllegalArgumentException("La razón social debe tener al menos 3 caracteres");
         }
-        if (trimmed.length() > 200) {
-            throw new IllegalArgumentException("La razón social no puede superar los 200 caracteres");
+        if (trimmed.length() > MAX_LENGTH) {
+            throw new IllegalArgumentException(
+                    "La razón social no puede superar los " + MAX_LENGTH + " caracteres");
         }
         return new BusinessName(trimmed);
     }

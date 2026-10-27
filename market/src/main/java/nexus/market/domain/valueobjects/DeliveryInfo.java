@@ -24,8 +24,15 @@ public final class DeliveryInfo {
         if (carrier == null || carrier.isBlank()) {
             throw new IllegalArgumentException("carrier es obligatorio");
         }
+        String tracking = (trackingNumber == null) ? "" : trackingNumber.trim();
+        if (tracking.length() > 64) {
+            throw new IllegalArgumentException("trackingNumber no puede superar los 64 caracteres");
+        }
+        if (carrier.trim().length() > 80) {
+            throw new IllegalArgumentException("carrier no puede superar los 80 caracteres");
+        }
         return new DeliveryInfo(
-                (trackingNumber == null) ? "" : trackingNumber.trim(),
+                tracking,
                 carrier.trim(),
                 estimatedDate);
     }

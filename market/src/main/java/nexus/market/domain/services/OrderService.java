@@ -86,7 +86,7 @@ public class OrderService {
         Order order = orders.save(Order.create(buyerId, frozen, shippingAddress));
 
         String reference = order.getOrderId().toString();
-        for (CartItem item : cart.getItems()) {
+        for (CartItem item : inLockOrder(cart.getItems(), CartItem::getProductId)) {
             if (item.getProductType() == ProductType.PHYSICAL) {
                 inventoryService.reserveForProduct(item.getProductId(), item.getQuantity(), reference);
             }
@@ -107,13 +107,15 @@ public class OrderService {
             throw new OrderNotModifiableException("El pedido no puede modificarse.");
         }
 
+        // El estado se valida ANTES del cobro externo (un cobro no se puede deshacer con un rollback).
+        order.requirePendingPayment();
         PaymentConfirmation confirmation =
                 payments.charge(orderId, order.getTotal(), paymentMethod);
         order.confirmPayment();
         orders.save(order);
 
         String reference = orderId.toString();
-        for (OrderItem item : order.getItems()) {
+        for (OrderItem item : inLockOrder(order.getItems(), OrderItem::getProductId)) {
             if (item.getProductType() == ProductType.PHYSICAL) {
                 inventoryService.confirmSaleForProduct(item.getProductId(), item.getQuantity(), reference);
             }
@@ -162,13 +164,26 @@ public class OrderService {
         if (order.getInvoiceId() != null) {
             invoiceService.cancelInvoice(order.getInvoiceId());
         }
-        for (OrderItem item : order.getItems()) {
+        for (OrderItem item : inLockOrder(order.getItems(), OrderItem::getProductId)) {
             if (item.getProductType() == ProductType.PHYSICAL) {
                 inventoryService.releaseForProduct(item.getProductId(), item.getQuantity(), orderId.toString());
             }
         }
         audit.record(OperationType.ORDER_CANCELLATION, AuditSeverity.WARNING,
                 order.getBuyerId().toString(), "Pedido cancelado: " + orderId);
+    }
+
+    /**
+     * Orden de bloqueo de inventario: los productos de una operación se procesan SIEMPRE por
+     * {@code productId} ascendente (y, dentro de un producto, por {@code inventory_id} ascendente en el
+     * adaptador). Dos pedidos con los mismos productos en distinto orden adquieren los bloqueos en el
+     * mismo orden y no se interbloquean. Ver docs/CONCURRENCIA_BLOQUEOS.md.
+     */
+    static <T> java.util.List<T> inLockOrder(java.util.Collection<T> items,
+                                             java.util.function.Function<T, nexus.market.domain.valueobjects.ProductId> productId) {
+        java.util.List<T> sorted = new java.util.ArrayList<>(items);
+        sorted.sort(java.util.Comparator.comparing(item -> productId.apply(item).value()));
+        return sorted;
     }
 
     public Optional<Order> getOrder(OrderId orderId) {
