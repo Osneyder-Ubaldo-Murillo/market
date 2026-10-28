@@ -122,6 +122,10 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Dar permisos al wrapper Maven
+        working-directory: ./market
+        run: chmod +x mvnw
+
       - name: Verificar que existe la clave de la API de NVD
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
