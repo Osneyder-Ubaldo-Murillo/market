@@ -143,6 +143,7 @@ jobs:
           restore-keys: dependency-check-data-
 
       - name: Ejecutar OWASP Dependency-Check ${{ env.DEPENDENCY_CHECK_VERSION }}
+        timeout-minutes: 20
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: >-
