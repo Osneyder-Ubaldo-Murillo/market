@@ -103,10 +103,12 @@ jobs:
 
   # ------------------------------------------------------------------
   # 2. Analisis de dependencias vulnerables (OWASP Dependency-Check)
-  #    BLOQUEA el workflow: sin clave de NVD, con errores de descarga/analisis o con CVSS >= 7.
+  #    BLOQUEA el workflow: sin base de datos de NVD utilizable, con errores de analisis o con CVSS >= 7.
   # ------------------------------------------------------------------
   dependency-check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: ./market
@@ -126,63 +128,60 @@ jobs:
         working-directory: ./market
         run: chmod +x mvnw
 
-      - name: Verificar que existe la clave de la API de NVD
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: |
-          if [ -z "$NVD_API_KEY" ]; then
-            echo "::error::Falta el secreto NVD_API_KEY. Sin él no se puede descargar la base de vulnerabilidades; el análisis NO se da por satisfactorio."
-            exit 1
-          fi
-
-      - name: Fecha para la clave de la caché
-        id: cache-date
-        run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
-
-      # La caché se restaura aquí y se GUARDA solo tras una actualización completa (más abajo). Así una base a medio
-      # escribir (timeout o cancelación durante la actualización) nunca llega a la caché.
-      - name: Restaurar la base de datos de vulnerabilidades
+      # Este job NO descarga NVD (-DautoUpdate=false), así que no usa NVD_API_KEY; esa clave solo es obligatoria en el
+      # workflow de actualización. Solo restaura la última base publicada por el workflow
+      # "Actualizar base de datos NVD (Dependency-Check)" (.github/workflows/update-dependency-check-data.yml).
+      # Con restore-keys se elige la caché más reciente con el prefijo de esta versión del plugin; la clave principal
+      # no existe nunca, así que siempre se restaura por prefijo.
+      - name: Restaurar la última base de datos de NVD
         id: dc-cache
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/dependency-check-data
-          key: dependency-check-data-${{ env.DEPENDENCY_CHECK_VERSION }}-${{ steps.cache-date.outputs.day }}
+          key: dependency-check-data-${{ env.DEPENDENCY_CHECK_VERSION }}-restore-latest
           restore-keys: |
             dependency-check-data-${{ env.DEPENDENCY_CHECK_VERSION }}-
 
-      - name: Actualizar la base de datos de NVD (${{ env.DEPENDENCY_CHECK_VERSION }})
-        # Los errores no se toleran: si la actualización falla o excede el tiempo, el job falla y no se guarda caché.
-        timeout-minutes: 120
+      - name: Comprobar que hay una base de datos de NVD utilizable
         env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: >-
-          ./mvnw -B -ntp
-          org.owasp:dependency-check-maven:${{ env.DEPENDENCY_CHECK_VERSION }}:update-only
-          -DfailOnError=true
-          -DnvdApiKeyEnvironmentVariable=NVD_API_KEY
-          -DdataDirectory=${{ runner.temp }}/dependency-check-data
-          -DossIndexAnalyzerEnabled=false
+          MATCHED_KEY: ${{ steps.dc-cache.outputs.cache-matched-key }}
+          EXPECTED_VERSION: ${{ env.DEPENDENCY_CHECK_VERSION }}
+          MAX_AGE_DAYS: '7'
+        run: |
+          dir="$RUNNER_TEMP/dependency-check-data"
+          marker="$dir/nexusmarket-nvd-update.properties"
+          hint="Ejecute el workflow 'Actualizar base de datos NVD (Dependency-Check)' (Actions > ese workflow > Run workflow) y vuelva a lanzar este CI cuando termine con éxito."
+          fail() { echo "::error::$1 $hint"; exit 1; }
 
-      # Se ejecuta solo si el paso anterior terminó bien (condición por defecto), y antes del análisis: el resultado del
-      # análisis (CVSS >= 7, etc.) no afecta a que la base de datos ya actualizada se conserve.
-      - name: Guardar la base de datos de vulnerabilidades
-        if: steps.dc-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ runner.temp }}/dependency-check-data
-          key: dependency-check-data-${{ env.DEPENDENCY_CHECK_VERSION }}-${{ steps.cache-date.outputs.day }}
+          [ -n "$MATCHED_KEY" ] || fail "No hay ninguna base de datos de NVD en caché para Dependency-Check $EXPECTED_VERSION. El análisis NO se omite: el job falla."
+          [ -f "$marker" ] || fail "La caché restaurada ($MATCHED_KEY) no contiene el marcador de actualización completa."
+          [ -n "$(find "$dir" -name odc.mv.db -size +0 -print -quit)" ] || fail "La caché restaurada ($MATCHED_KEY) no contiene el archivo de base de datos odc.mv.db."
+
+          version="$(sed -n 's/^dependency_check_version=//p' "$marker")"
+          completed="$(sed -n 's/^completed_epoch=//p' "$marker")"
+          [ "$version" = "$EXPECTED_VERSION" ] || fail "La base fue creada con Dependency-Check '$version', se esperaba '$EXPECTED_VERSION'."
+          case "$completed" in ''|*[!0-9]*|??????????*?) fail "El marcador de actualización no tiene una fecha válida." ;; esac
+
+          now="$(date -u +%s)"
+          # Se tolera hasta 5 min de diferencia entre relojes de runners; una fecha más futura es inválida.
+          [ "$completed" -le $(( now + 300 )) ] || fail "La fecha del marcador está en el futuro."
+          age_days=$(( ( now - completed ) / 86400 ))
+          [ "$age_days" -ge 0 ] || age_days=0
+          echo "Base de datos NVD restaurada de la caché '$MATCHED_KEY'; última actualización completa hace $age_days día(s)."
+          if [ "$age_days" -gt "$MAX_AGE_DAYS" ]; then
+            fail "La base de datos de NVD tiene $age_days días (máximo $MAX_AGE_DAYS): el workflow programado de actualización lleva tiempo fallando."
+          elif [ "$age_days" -gt 2 ]; then
+            echo "::warning::La base de datos de NVD tiene $age_days días; revise el workflow de actualización."
+          fi
 
       - name: Ejecutar OWASP Dependency-Check ${{ env.DEPENDENCY_CHECK_VERSION }}
         timeout-minutes: 20
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: >-
           ./mvnw -B -ntp
           org.owasp:dependency-check-maven:${{ env.DEPENDENCY_CHECK_VERSION }}:check
           -DfailBuildOnCVSS=7
           -DfailOnError=true
           -DautoUpdate=false
-          -DnvdApiKeyEnvironmentVariable=NVD_API_KEY
           -DdataDirectory=${{ runner.temp }}/dependency-check-data
           -DossIndexAnalyzerEnabled=false
           -DnodeAuditAnalyzerEnabled=false

@@ -1,0 +1,128 @@
+name: Actualizar base de datos NVD (Dependency-Check)
+
+# Mantiene la base de datos de vulnerabilidades (H2) que usa el job "dependency-check" de ci.yml, para que el CI no
+# tenga que descargar NVD en cada ejecución. Detalle y diagnóstico: market/docs/CI_CD.md.
+on:
+  workflow_dispatch:
+  schedule:
+    # Diario, a una hora no redonda (03:23 UTC) para evitar los picos de carga de GitHub Actions.
+    - cron: '23 3 * * *'
+
+# Solo se necesita leer el repositorio (checkout). actions/cache usa su propio token de ejecución.
+permissions:
+  contents: read
+
+# Una sola actualización a la vez. Sin cancelar la que está en curso: cancelarla a medias descartaría horas de descarga.
+concurrency:
+  group: dependency-check-data-update
+  cancel-in-progress: false
+
+env:
+  JAVA_VERSION: '17'
+  # Debe coincidir con DEPENDENCY_CHECK_VERSION de ci.yml: la versión forma parte del nombre de la caché y el formato de
+  # la base H2 no es compatible entre versiones mayores.
+  DEPENDENCY_CHECK_VERSION: '12.2.2'
+
+jobs:
+  update-nvd-data:
+    runs-on: ubuntu-latest
+    # Presupuesto de tiempo (límite de un job en runners de GitHub: 6 h = 360 min):
+    #   preparación ~2 min + actualización (paso, 320 min) + comprobación y guardado de la caché (~15 min) + margen.
+    # El job se corta a los 350 min para que sea GitHub quien lo cierre limpiamente antes del límite duro. Si la primera
+    # descarga completa no cabe en 320 min, el paso falla por tiempo, NO se guarda ninguna caché y el CI seguirá
+    # fallando con el mensaje de "no hay base de datos". El ritmo observado (~1.400 registros/min, 170.000 de 416.000 en
+    # 120 min) extrapolado linealmente da ~295 min, pero es una estimación, no una garantía.
+    timeout-minutes: 350
+    defaults:
+      run:
+        working-directory: ./market
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Dar permisos al wrapper Maven
+        run: chmod +x mvnw
+
+      - name: Verificar que existe la clave de la API de NVD
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          if [ -z "$NVD_API_KEY" ]; then
+            echo "::error::Falta el secreto NVD_API_KEY. Sin él la actualización de NVD es extremadamente lenta o falla; no se actualiza la base."
+            exit 1
+          fi
+
+      # Las cachés de GitHub son inmutables: una clave existente no se puede reescribir. Por eso cada ejecución publica una
+      # clave NUEVA (única por ejecución e intento) y restaura la más reciente por prefijo. La clave principal es única,
+      # así que nunca hay "hit" exacto: siempre se parte de la última base válida (si existe) y se actualiza.
+      - name: Restaurar la última base de datos de NVD
+        id: dc-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/dependency-check-data
+          key: dependency-check-data-${{ env.DEPENDENCY_CHECK_VERSION }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            dependency-check-data-${{ env.DEPENDENCY_CHECK_VERSION }}-
+
+      - name: Actualizar la base de datos de NVD (${{ env.DEPENDENCY_CHECK_VERSION }})
+        # Los errores no se toleran: si la actualización falla o excede el tiempo, el job falla y no se guarda caché.
+        # La documentación consultada no garantiza que una actualización interrumpida se reanude; se asume que NO.
+        timeout-minutes: 320
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        # El registro se guarda fuera del directorio de datos (no entra en la caché). pipefail: si Maven falla, el paso falla.
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp \
+            org.owasp:dependency-check-maven:${{ env.DEPENDENCY_CHECK_VERSION }}:update-only \
+            -DfailOnError=true \
+            -DnvdApiKeyEnvironmentVariable=NVD_API_KEY \
+            -DdataDirectory=${{ runner.temp }}/dependency-check-data \
+            -DossIndexAnalyzerEnabled=false 2>&1 | tee "$RUNNER_TEMP/nvd-update.log"
+
+      # Solo llega aquí si el paso anterior terminó con éxito (condición por defecto de los pasos).
+      # El marcador se escribe DESPUÉS de la actualización y es lo que el CI exige para aceptar la base.
+      - name: Comprobar la base actualizada y escribir el marcador
+        run: |
+          dir="$RUNNER_TEMP/dependency-check-data"
+          log="$RUNNER_TEMP/nvd-update.log"
+          if [ -z "$(find "$dir" -name odc.mv.db -size +0 -print -quit)" ]; then
+            echo "::error::La actualización terminó pero no existe un odc.mv.db no vacío en $dir. No se guarda la caché."
+            exit 1
+          fi
+          # En Dependency-Check 12.2.2 (Engine.doUpdates) un fallo de la descarga de NVD se registra como error y la
+          # ejecución continúa: "update-only" puede terminar con código 0 aunque la actualización haya fallado. Por eso el
+          # código de salida no basta: se rechaza el marcador si el registro contiene un error de actualización. Engine registra
+          # cada fallo con LOGGER.error(mensaje, excepción), así que aparece el nombre de la clase UpdateException (cualquier
+          # fuente: NVD, KEV...) y/o el mensaje. Es deliberadamente estricto: ante la duda NO se publica la caché.
+          errors='UpdateException|Error updating the NVD Data|Exception processing NVD API Results|NVD Returned Status Code|unable to update the data to use the most current data|download was interrupted|was interrupted during'
+          if grep -E -q "$errors" "$log"; then
+            echo "::error::El registro de update-only contiene errores de actualización aunque Maven terminó con éxito. No se escribe el marcador ni se guarda la caché."
+            grep -E "$errors" "$log" | head -5
+            exit 1
+          fi
+          grep -E 'NVD API has .* records in this update|Skipping the NVD API Update as it was completed' "$log" \
+            || echo "::warning::No se encontró en el registro la línea de resumen de la actualización de NVD."
+          {
+            echo "dependency_check_version=$DEPENDENCY_CHECK_VERSION"
+            echo "completed_epoch=$(date -u +%s)"
+            echo "completed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "commit=$GITHUB_SHA"
+          } > "$dir/nexusmarket-nvd-update.properties"
+          echo "Base de datos NVD actualizada y marcada como completa:"
+          cat "$dir/nexusmarket-nvd-update.properties"
+
+      - name: Guardar la base de datos de NVD en la caché
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/dependency-check-data
+          key: ${{ steps.dc-cache.outputs.cache-primary-key }}
