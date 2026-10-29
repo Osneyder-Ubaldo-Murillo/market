@@ -11,7 +11,7 @@ env:
   MAVEN_VERSION: '3.9.x'
   # OWASP Dependency-Check: version fijada (no se resuelve "la ultima"). Umbral: falla con CVSS >= 7.0.
   DEPENDENCY_CHECK_VERSION: '12.2.2'
-  IMAGE_NAME: osneydermurillo/nexusmarket
+  IMAGE_NAME: osneyder/nexusmarket
 
 # Detalle de secretos, criterios y como habilitar el despliegue: market/docs/CI_CD.md
 
