@@ -135,12 +135,42 @@ jobs:
             exit 1
           fi
 
-      - name: Cache de la base de datos de vulnerabilidades
-        uses: actions/cache@v4
+      - name: Fecha para la clave de la caché
+        id: cache-date
+        run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      # La caché se restaura aquí y se GUARDA solo tras una actualización completa (más abajo). Así una base a medio
+      # escribir (timeout o cancelación durante la actualización) nunca llega a la caché.
+      - name: Restaurar la base de datos de vulnerabilidades
+        id: dc-cache
+        uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/dependency-check-data
-          key: dependency-check-data-${{ github.run_id }}
-          restore-keys: dependency-check-data-
+          key: dependency-check-data-${{ env.DEPENDENCY_CHECK_VERSION }}-${{ steps.cache-date.outputs.day }}
+          restore-keys: |
+            dependency-check-data-${{ env.DEPENDENCY_CHECK_VERSION }}-
+
+      - name: Actualizar la base de datos de NVD (${{ env.DEPENDENCY_CHECK_VERSION }})
+        # Los errores no se toleran: si la actualización falla o excede el tiempo, el job falla y no se guarda caché.
+        timeout-minutes: 120
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: >-
+          ./mvnw -B -ntp
+          org.owasp:dependency-check-maven:${{ env.DEPENDENCY_CHECK_VERSION }}:update-only
+          -DfailOnError=true
+          -DnvdApiKeyEnvironmentVariable=NVD_API_KEY
+          -DdataDirectory=${{ runner.temp }}/dependency-check-data
+          -DossIndexAnalyzerEnabled=false
+
+      # Se ejecuta solo si el paso anterior terminó bien (condición por defecto), y antes del análisis: el resultado del
+      # análisis (CVSS >= 7, etc.) no afecta a que la base de datos ya actualizada se conserve.
+      - name: Guardar la base de datos de vulnerabilidades
+        if: steps.dc-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/dependency-check-data
+          key: dependency-check-data-${{ env.DEPENDENCY_CHECK_VERSION }}-${{ steps.cache-date.outputs.day }}
 
       - name: Ejecutar OWASP Dependency-Check ${{ env.DEPENDENCY_CHECK_VERSION }}
         timeout-minutes: 20
@@ -151,6 +181,7 @@ jobs:
           org.owasp:dependency-check-maven:${{ env.DEPENDENCY_CHECK_VERSION }}:check
           -DfailBuildOnCVSS=7
           -DfailOnError=true
+          -DautoUpdate=false
           -DnvdApiKeyEnvironmentVariable=NVD_API_KEY
           -DdataDirectory=${{ runner.temp }}/dependency-check-data
           -DossIndexAnalyzerEnabled=false
