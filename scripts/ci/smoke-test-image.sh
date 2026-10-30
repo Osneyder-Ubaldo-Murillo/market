@@ -62,6 +62,7 @@ docker run -d --name "$APP" --network "$NET" -p 127.0.0.1::8080 \
   -e SPRING_DATASOURCE_USERNAME=nexus_app -e SPRING_DATASOURCE_PASSWORD="$DB_PW" \
   -e SPRING_MONGODB_URI="mongodb://nexus_audit:$MONGO_PW@mongodb:27017/nexusmarket_audit?authSource=admin" \
   -e JWT_SECRET="$JWT" \
+  -e NEXUSMARKET_PAYMENT_SIMULATED_ALLOWED=true \
   "$IMAGE" >/dev/null
 
 PORT="$(docker port "$APP" 8080/tcp | head -1 | sed -E 's/.*:([0-9]+)$/\1/')"

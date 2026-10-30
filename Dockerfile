@@ -45,4 +45,9 @@ ENV SPRING_PROFILES_ACTIVE=jpa,prod \
     MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,metrics \
     MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS=never
 
+# Salud del contenedor también al ejecutarlo con "docker run" (el compose define la suya). Usa /actuator/health, público
+# y sin detalles. start-period amplio: el arranque incluye las migraciones de Flyway.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
+  CMD curl -fsS "http://localhost:${SERVER_PORT:-8080}/actuator/health" || exit 1
+
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # ------------------------------------------------------------------
   # Base de datos principal (MySQL 8)
@@ -84,6 +82,9 @@ services:
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: never
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+      # Pasarela de pago SIMULADA (no cobra): con el perfil prod la aplicación NO arranca si esto no es "true".
+      # Es una autorización explícita y académica; por defecto queda bloqueada. Ver market/docs/ENTORNOS.md.
+      NEXUSMARKET_PAYMENT_SIMULATED_ALLOWED: ${NEXUSMARKET_PAYMENT_SIMULATED_ALLOWED:-false}
       # Administrador inicial: DESHABILITADO por defecto. Ver market/docs/ADMIN_INICIAL_ACTIVACION.md.
       # Activar solo en el primer arranque; la contraseña se entrega preferentemente por archivo de secreto.
       NEXUSMARKET_BOOTSTRAP_ADMIN_ENABLED: ${NEXUSMARKET_BOOTSTRAP_ADMIN_ENABLED:-false}
