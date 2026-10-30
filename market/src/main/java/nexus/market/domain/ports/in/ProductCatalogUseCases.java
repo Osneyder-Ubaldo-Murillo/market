@@ -25,7 +25,15 @@ public interface ProductCatalogUseCases {
 
     void updatePrice(ProductId productId, Money newPrice);
 
+    /** Cambia el nombre y la descripción de un producto existente. */
+    void updateDetails(ProductId productId, ProductName name, ProductDescription description);
+
     Product findById(ProductId productId);
 
     List<Product> findPublished();
+
+    /** Una página del catálogo publicado (ordenada por nombre e id); {@code nameContains} filtra por nombre si no es nulo. */
+    List<Product> findPublished(String nameContains, int offset, int limit);
+
+    long countPublished(String nameContains);
 }

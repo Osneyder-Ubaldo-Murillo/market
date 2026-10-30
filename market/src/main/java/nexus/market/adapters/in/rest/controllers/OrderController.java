@@ -1,6 +1,6 @@
 package nexus.market.adapters.in.rest.controllers;
 
-import nexus.market.adapters.in.rest.security.AccessPolicy;
+import nexus.market.application.AccessPolicy;
 import jakarta.validation.Valid;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import nexus.market.adapters.in.rest.PageParams;
 import nexus.market.adapters.in.rest.mappers.RestMappers;
 import nexus.market.adapters.in.rest.requests.OrderRequests.CreateOrderRequest;
 import nexus.market.adapters.in.rest.requests.OrderRequests.DispatchOrderRequest;
@@ -48,6 +49,21 @@ public class OrderController {
         policy.requireOwnBuyer(buyerId);
         return ResponseEntity.status(HttpStatus.CREATED).body(RestMappers.order(
                 orderUseCases.createOrder(BuyerId.of(buyerId), request.shippingAddress().toDomain())));
+    }
+
+    /** Pedidos del comprador autenticado, paginados (más recientes primero). Total en la cabecera X-Total-Count. */
+    @GetMapping("/buyers/{buyerId}/orders")
+    public ResponseEntity<java.util.List<OrderResponse>> listByBuyer(
+            @PathVariable String buyerId,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") int page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "20") int size) {
+        policy.requireOwnBuyer(buyerId);
+        PageParams params = PageParams.of(page, size);
+        BuyerId id = BuyerId.of(buyerId);
+        return ResponseEntity.ok()
+                .header(PageParams.TOTAL_COUNT_HEADER, String.valueOf(orderUseCases.countByBuyer(id)))
+                .body(orderUseCases.findByBuyer(id, params.offset(), params.size()).stream()
+                        .map(RestMappers::order).toList());
     }
 
     @GetMapping("/orders/{orderId}")

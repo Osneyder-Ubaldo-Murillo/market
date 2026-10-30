@@ -76,6 +76,17 @@ public class InvoiceService {
                 invoice.getBuyerId().toString(), "Factura anulada: " + invoiceId);
     }
 
+    public java.util.List<Invoice> findByBuyer(nexus.market.domain.valueobjects.BuyerId buyerId, int offset,
+                                               int limit) {
+        Objects.requireNonNull(buyerId, "buyerId es obligatorio");
+        return invoices.findByBuyerId(buyerId, offset, limit);
+    }
+
+    public long countByBuyer(nexus.market.domain.valueobjects.BuyerId buyerId) {
+        Objects.requireNonNull(buyerId, "buyerId es obligatorio");
+        return invoices.countByBuyerId(buyerId);
+    }
+
     public Optional<Invoice> findByOrderId(OrderId orderId) {
         return invoices.findByOrderId(orderId);
     }

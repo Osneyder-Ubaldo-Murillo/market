@@ -18,4 +18,9 @@ public interface OrderRepositoryPort {
     Optional<Order> findById(OrderId orderId);
 
     List<Order> findByBuyerId(BuyerId buyerId);
+
+    /** Una página de los pedidos del comprador, del más reciente al más antiguo (orden estable). */
+    List<Order> findByBuyerId(BuyerId buyerId, int offset, int limit);
+
+    long countByBuyerId(BuyerId buyerId);
 }

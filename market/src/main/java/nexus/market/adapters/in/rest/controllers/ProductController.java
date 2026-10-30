@@ -1,6 +1,6 @@
 package nexus.market.adapters.in.rest.controllers;
 
-import nexus.market.adapters.in.rest.security.AccessPolicy;
+import nexus.market.application.AccessPolicy;
 import java.util.List;
 
 import jakarta.validation.Valid;
@@ -15,9 +15,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import nexus.market.adapters.in.rest.PageParams;
 import nexus.market.adapters.in.rest.mappers.RestMappers;
 import nexus.market.adapters.in.rest.requests.ProductRequests.CreateProductRequest;
 import nexus.market.adapters.in.rest.requests.ProductRequests.UpdatePriceRequest;
+import nexus.market.adapters.in.rest.requests.ProductRequests.UpdateProductRequest;
 import nexus.market.adapters.in.rest.responses.CatalogResponses.ProductResponse;
 import nexus.market.adapters.in.rest.responses.UserResponses.MessageResponse;
 import nexus.market.domain.exceptions.BusinessException;
@@ -70,12 +72,33 @@ public class ProductController {
         return ResponseEntity.ok(RestMappers.product(product));
     }
 
-    /** Catálogo visible: solo productos publicados. */
+    /**
+     * Catálogo visible: solo productos publicados, paginado (por defecto 20, máximo {@value PageParams#MAX_SIZE} por
+     * página) y ordenado por nombre; {@code q} filtra por texto contenido en el nombre. Un catálogo público sin límite permitiría descargar toda la tabla en una petición.
+     * El total está en la cabecera {@code X-Total-Count}.
+     */
     @GetMapping
-    public ResponseEntity<List<ProductResponse>> findPublished() {
-        return ResponseEntity.ok(productUseCases.findPublished().stream()
-                .map(RestMappers::product)
-                .toList());
+    public ResponseEntity<List<ProductResponse>> findPublished(
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") int page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "20") int size,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String q) {
+        PageParams params = PageParams.of(page, size);
+        String filter = PageParams.searchText(q);
+        return ResponseEntity.ok()
+                .header(PageParams.TOTAL_COUNT_HEADER, String.valueOf(productUseCases.countPublished(filter)))
+                .body(productUseCases.findPublished(filter, params.offset(), params.size()).stream()
+                        .map(RestMappers::product)
+                        .toList());
+    }
+
+    /** El vendedor dueño edita el nombre y la descripción de su producto. */
+    @PutMapping("/{productId}")
+    public ResponseEntity<ProductResponse> update(@PathVariable String productId,
+                                                  @Valid @RequestBody UpdateProductRequest request) {
+        policy.requireOwnProduct(productId);
+        productUseCases.updateDetails(ProductId.of(productId), ProductName.of(request.name()),
+                ProductDescription.of(request.description()));
+        return ResponseEntity.ok(RestMappers.product(productUseCases.findById(ProductId.of(productId))));
     }
 
     @PostMapping("/{productId}/publish")

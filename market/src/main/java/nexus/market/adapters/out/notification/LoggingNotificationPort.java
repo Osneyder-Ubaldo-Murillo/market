@@ -21,6 +21,18 @@ public class LoggingNotificationPort implements NotificationPort {
     @Override
     public void send(NotificationChannel channel, String recipient, String subject, String content) {
         log.info("[NOTIFICATION] channel={} to={} subject={} content={}",
-                channel, recipient, subject, content);
+                channel, mask(recipient), subject, content);
+    }
+
+    /** El log no debe guardar direcciones completas: {@code ana@example.com} se registra como {@code a***@example.com}. */
+    static String mask(String recipient) {
+        if (recipient == null || recipient.isBlank()) {
+            return "(sin destinatario)";
+        }
+        int at = recipient.indexOf('@');
+        if (at > 0) {
+            return recipient.charAt(0) + "***" + recipient.substring(at);
+        }
+        return recipient.length() <= 4 ? "***" : recipient.substring(0, 2) + "***";
     }
 }

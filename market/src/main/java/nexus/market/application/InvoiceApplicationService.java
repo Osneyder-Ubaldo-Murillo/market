@@ -39,6 +39,17 @@ public class InvoiceApplicationService implements InvoiceUseCases {
     }
 
     @Override
+    public java.util.List<Invoice> findByBuyer(nexus.market.domain.valueobjects.BuyerId buyerId, int offset,
+                                               int limit) {
+        return delegate.findByBuyer(buyerId, offset, limit);
+    }
+
+    @Override
+    public long countByBuyer(nexus.market.domain.valueobjects.BuyerId buyerId) {
+        return delegate.countByBuyer(buyerId);
+    }
+
+    @Override
     public Optional<Invoice> findByOrderId(OrderId orderId) {
         return delegate.findByOrderId(orderId);
     }

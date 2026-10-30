@@ -59,7 +59,7 @@ class DatabaseOutageIntegrationTest extends RestTestSupport {
         doThrow(new PersistenceException("Unable to acquire JDBC Connection [jdbc:mysql://db-interna:3306/nexusmarket user=nexus]",
                 new JDBCConnectionException("pool",
                         new SQLTransientConnectionException("HikariPool-1 - Connection is not available, request timed out after 30001ms"))))
-                .when(products).findPublished();
+                .when(products).findPublished(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt());
 
         MvcResult result = get("/api/products", null);
 
@@ -73,7 +73,7 @@ class DatabaseOutageIntegrationTest extends RestTestSupport {
 
     @Test
     void recovery_restoresNormalResponses() throws Exception {
-        doThrow(connectionDown()).when(products).findPublished();
+        doThrow(connectionDown()).when(products).findPublished(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt());
         assertThat(get("/api/products", null).getResponse().getStatus()).isEqualTo(503);
 
         reset(products); // la base de datos "vuelve"
@@ -83,7 +83,7 @@ class DatabaseOutageIntegrationTest extends RestTestSupport {
 
     @Test
     void businessErrors_keepTheirOwnStatus_notUnavailability() throws Exception {
-        doThrow(new BusinessException("PRODUCT_NOT_FOUND", "Producto inexistente.")).when(products).findPublished();
+        doThrow(new BusinessException("PRODUCT_NOT_FOUND", "Producto inexistente.")).when(products).findPublished(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt());
         MvcResult result = get("/api/products", null);
         assertThat(result.getResponse().getStatus()).isEqualTo(404);
         assertThat(code(result)).isEqualTo("PRODUCT_NOT_FOUND");
@@ -91,7 +91,7 @@ class DatabaseOutageIntegrationTest extends RestTestSupport {
 
     @Test
     void validationErrors_stay400_evenIfTheDatabaseIsDown() throws Exception {
-        doThrow(connectionDown()).when(products).findPublished();
+        doThrow(connectionDown()).when(products).findPublished(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt());
         // Una entrada inválida se rechaza antes de tocar la base de datos.
         assertThat(status(HttpMethod.POST, "/api/auth/login", null, "{}")).isEqualTo(400);
         assertThat(status(HttpMethod.POST, "/api/auth/login", null, "{\"email\": ")).isEqualTo(400);
@@ -99,7 +99,7 @@ class DatabaseOutageIntegrationTest extends RestTestSupport {
 
     @Test
     void unexpectedProgrammingErrors_stay500_withAGenericBody() throws Exception {
-        doThrow(new NullPointerException("detalle interno")).when(products).findPublished();
+        doThrow(new NullPointerException("detalle interno")).when(products).findPublished(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt());
         MvcResult result = get("/api/products", null);
         assertThat(result.getResponse().getStatus()).isEqualTo(500);
         assertThat(code(result)).isEqualTo("INTERNAL_ERROR");
@@ -110,7 +110,7 @@ class DatabaseOutageIntegrationTest extends RestTestSupport {
     void dataIntegrityErrors_areNot503() throws Exception {
         doThrow(new PersistenceException("dup", new ConstraintViolationException("dup",
                 new SQLIntegrityConstraintViolationException("Duplicate entry", "23000", 1062), "uk")))
-                .when(products).findPublished();
+                .when(products).findPublished(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt());
         MvcResult result = get("/api/products", null);
         assertThat(result.getResponse().getStatus()).isEqualTo(500);
         assertThat(code(result)).isEqualTo("INTERNAL_ERROR");
@@ -123,7 +123,7 @@ class DatabaseOutageIntegrationTest extends RestTestSupport {
         assertThat(get("/api/users/" + buyer.userId(), "no-es-un-jwt").getResponse().getStatus()).isEqualTo(401);
         assertThat(get("/api/users/" + buyer.userId(), buyer.token()).getResponse().getStatus()).isEqualTo(200);
         // En una ruta pública un token basura se ignora y, con la base de datos caída, la ruta responde 503.
-        doThrow(connectionDown()).when(products).findPublished();
+        doThrow(connectionDown()).when(products).findPublished(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt());
         assertThat(get("/api/products", "no-es-un-jwt").getResponse().getStatus()).isEqualTo(503);
     }
 }

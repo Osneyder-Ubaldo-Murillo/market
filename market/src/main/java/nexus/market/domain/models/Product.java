@@ -25,8 +25,8 @@ public class Product {
 
     private final ProductId productId;
     private final SellerId sellerId;
-    private final ProductName name;
-    private final ProductDescription description;
+    private ProductName name;
+    private ProductDescription description;
     private final ProductType productType;
     private Money price;
     private ProductStatus status;
@@ -91,6 +91,13 @@ public class Product {
      */
     public void markOutOfStock() {
         this.status = ProductStatus.OUT_OF_STOCK;
+        touch();
+    }
+
+    /** Cambia el nombre y la descripción. El tipo, el vendedor, el precio y el estado no se modifican por aquí. */
+    public void updateDetails(ProductName newName, ProductDescription newDescription) {
+        this.name = Objects.requireNonNull(newName, "newName es obligatorio");
+        this.description = Objects.requireNonNull(newDescription, "newDescription es obligatorio");
         touch();
     }
 

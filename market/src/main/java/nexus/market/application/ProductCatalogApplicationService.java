@@ -47,6 +47,11 @@ public class ProductCatalogApplicationService implements ProductCatalogUseCases 
     }
 
     @Override
+    public void updateDetails(ProductId productId, ProductName name, ProductDescription description) {
+        delegate.updateDetails(productId, name, description);
+    }
+
+    @Override
     public void updatePrice(ProductId productId, Money newPrice) {
         delegate.updatePrice(productId, newPrice);
     }
@@ -59,5 +64,15 @@ public class ProductCatalogApplicationService implements ProductCatalogUseCases 
     @Override
     public List<Product> findPublished() {
         return delegate.findPublished();
+    }
+
+    @Override
+    public List<Product> findPublished(String nameContains, int offset, int limit) {
+        return delegate.findPublished(nameContains, offset, limit);
+    }
+
+    @Override
+    public long countPublished(String nameContains) {
+        return delegate.countPublished(nameContains);
     }
 }

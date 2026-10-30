@@ -1,6 +1,6 @@
 package nexus.market.adapters.in.rest.controllers;
 
-import nexus.market.adapters.in.rest.security.AccessPolicy;
+import nexus.market.application.AccessPolicy;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -39,6 +39,22 @@ public class InvoiceController {
     public ResponseEntity<InvoiceResponse> generate(@PathVariable String orderId) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(RestMappers.invoice(invoiceUseCases.generateInvoice(OrderId.of(orderId))));
+    }
+
+    /** Facturas del comprador autenticado, paginadas (más recientes primero). Total en X-Total-Count. */
+    @GetMapping("/buyers/{buyerId}/invoices")
+    public ResponseEntity<java.util.List<InvoiceResponse>> listByBuyer(
+            @PathVariable String buyerId,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") int page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "20") int size) {
+        policy.requireOwnBuyer(buyerId);
+        nexus.market.adapters.in.rest.PageParams params = nexus.market.adapters.in.rest.PageParams.of(page, size);
+        nexus.market.domain.valueobjects.BuyerId id = nexus.market.domain.valueobjects.BuyerId.of(buyerId);
+        return ResponseEntity.ok()
+                .header(nexus.market.adapters.in.rest.PageParams.TOTAL_COUNT_HEADER,
+                        String.valueOf(invoiceUseCases.countByBuyer(id)))
+                .body(invoiceUseCases.findByBuyer(id, params.offset(), params.size()).stream()
+                        .map(RestMappers::invoice).toList());
     }
 
     @GetMapping("/orders/{orderId}/invoice")

@@ -23,4 +23,12 @@ public interface ProductRepositoryPort {
     List<Product> findByStatus(ProductStatus status);
 
     List<Product> findPublished();
+
+    /**
+     * Una página del catálogo publicado, ordenada por nombre e id (orden estable). {@code nameContains}, si no es nulo,
+     * filtra por texto contenido en el nombre sin distinguir mayúsculas.
+     */
+    List<Product> findPublished(String nameContains, int offset, int limit);
+
+    long countPublished(String nameContains);
 }

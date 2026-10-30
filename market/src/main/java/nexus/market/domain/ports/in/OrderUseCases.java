@@ -27,4 +27,9 @@ public interface OrderUseCases {
     void cancel(OrderId orderId);
 
     Optional<Order> getOrder(OrderId orderId);
+
+    /** Una página de los pedidos del comprador, del más reciente al más antiguo. */
+    java.util.List<Order> findByBuyer(BuyerId buyerId, int offset, int limit);
+
+    long countByBuyer(BuyerId buyerId);
 }

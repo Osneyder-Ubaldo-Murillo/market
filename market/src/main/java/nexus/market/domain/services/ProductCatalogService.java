@@ -76,6 +76,15 @@ public class ProductCatalogService {
                 product.getSellerId().toString(), "Producto despublicado: " + productId);
     }
 
+    /** Actualiza el nombre y la descripción del producto. */
+    public void updateDetails(ProductId productId, ProductName name, ProductDescription description) {
+        Product product = loadProduct(productId);
+        product.updateDetails(name, description);
+        products.save(product);
+        audit.record(OperationType.PRODUCT_UPDATE, AuditSeverity.INFO,
+                product.getSellerId().toString(), "Datos del producto actualizados: " + productId);
+    }
+
     /** Actualiza el precio del producto. */
     public void updatePrice(ProductId productId, Money newPrice) {
         Product product = loadProduct(productId);
@@ -88,6 +97,15 @@ public class ProductCatalogService {
     /** Consulta el catálogo visible (publicado y con stock). */
     public List<Product> findPublished() {
         return products.findPublished();
+    }
+
+    /** Una página del catálogo visible. */
+    public List<Product> findPublished(String nameContains, int offset, int limit) {
+        return products.findPublished(nameContains, offset, limit);
+    }
+
+    public long countPublished(String nameContains) {
+        return products.countPublished(nameContains);
     }
 
     public Product findById(ProductId productId) {

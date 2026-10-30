@@ -17,4 +17,9 @@ public interface InvoiceRepositoryPort {
     Optional<Invoice> findById(InvoiceId invoiceId);
 
     Optional<Invoice> findByOrderId(OrderId orderId);
+
+    /** Una página de las facturas del comprador, de la más reciente a la más antigua (orden estable). */
+    java.util.List<Invoice> findByBuyerId(nexus.market.domain.valueobjects.BuyerId buyerId, int offset, int limit);
+
+    long countByBuyerId(nexus.market.domain.valueobjects.BuyerId buyerId);
 }

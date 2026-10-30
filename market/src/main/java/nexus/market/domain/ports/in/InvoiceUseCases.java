@@ -19,4 +19,9 @@ public interface InvoiceUseCases {
     Optional<Invoice> findByOrderId(OrderId orderId);
 
     Invoice findById(InvoiceId invoiceId);
+
+    /** Una página de las facturas del comprador, de la más reciente a la más antigua. */
+    java.util.List<Invoice> findByBuyer(nexus.market.domain.valueobjects.BuyerId buyerId, int offset, int limit);
+
+    long countByBuyer(nexus.market.domain.valueobjects.BuyerId buyerId);
 }

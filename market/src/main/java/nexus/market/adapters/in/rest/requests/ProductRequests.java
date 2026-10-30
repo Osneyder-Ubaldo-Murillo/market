@@ -27,6 +27,12 @@ public final class ProductRequests {
             @NotNull(message = "price es obligatorio") @Valid MoneyRequest price) {
     }
 
+    /** Cambio de nombre y descripción (el tipo, el vendedor, el precio y el estado no se editan aquí). */
+    public record UpdateProductRequest(
+            @NotBlank(message = "name es obligatorio") @Size(max = 100, message = "name no puede exceder 100 caracteres") String name,
+            @NotBlank(message = "description es obligatorio") @Size(max = 500, message = "description no puede exceder 500 caracteres") String description) {
+    }
+
     /** Actualización de precio. */
     public record UpdatePriceRequest(@NotNull(message = "price es obligatorio") @Valid MoneyRequest price) {
     }
