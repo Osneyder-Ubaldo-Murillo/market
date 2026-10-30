@@ -61,7 +61,7 @@ Recurso externo (MySQL, MongoDB, pasarela de pagos, transportadora, etc.)
 
 ## Estructura de Paquetes (Java)
 nexus.market
-├── NexusMarketApplication.java // Punto de entrada Spring Boot
+├── MarketApplication.java // Punto de entrada Spring Boot
 │
 ├── adapters
 │ ├── in
@@ -208,10 +208,10 @@ nexus.market
 │ ├── DatabaseConfig.java
 │ ├── SecurityConfig.java
 │ └── ...
-├── security // JWT, filtros, etc.
-│ ├── JwtFilter.java
-│ ├── JwtTokenProvider.java
-│ └── ...
+├── security // JWT, filtros, etc. (implementado en adapters.out.security y infrastructure.config)
+│ ├── JwtAuthenticationFilter.java // adapters.in.rest.security (filtro HTTP de entrada)
+│ ├── JwtJwtServicePort.java // adapters.out.security (emisión y validación HS256)
+│ └── SecurityConfiguration.java // infrastructure.config (reglas por rol, CORS, sin sesión)
 └── database // Inicialización y conexiones
 ├── MySQLInitializer.java
 └── MongoInitializer.java
@@ -228,6 +228,18 @@ nexus.market
 8. Cada dependencia apunta hacia el dominio.
 9. Las entidades de dominio no conocen Spring, JPA, MongoDB, HTTP, etc.
 10. El dominio debe ser completamente testeable sin necesidad de levantar la infraestructura.
+
+### Estado de la implementación (matices respecto a las restricciones anteriores)
+
+- **Dominio** (`nexus.market.domain`): verificado, no importa Spring, JPA ni MongoDB.
+- **Capa de aplicación** (`nexus.market.application`): existe y orquesta los casos de uso con `@Service`, `@Transactional`
+  y `@Profile` de Spring. Es decir, la restricción 9 aplica al dominio, no a esta capa, que es el límite transaccional.
+- **`AccessPolicy`** (`application`): comprueba la propiedad del recurso consultando puertos de repositorio; los
+  controladores dependen de ella y no de los repositorios. Lee la identidad del `SecurityContext` de Spring Security.
+- **Limitadores** (`application`): `LoginAttemptLimiter`, `RegistrationAttemptLimiter` y `PasswordRecoveryLimiter` (en memoria,
+  por instancia).
+- **Perfiles**: `jpa` activa persistencia y API; `prod` añade Flyway (`db/schema`), auditoría en MongoDB y las guardas de
+  producción (secretos, credenciales y bloqueo del pago simulado).
 
 
 ## Beneficios

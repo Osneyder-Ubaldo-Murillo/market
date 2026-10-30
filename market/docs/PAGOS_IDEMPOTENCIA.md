@@ -13,6 +13,19 @@ solo escribe en el log.
   concurrentes del mismo pedido en la misma base se serializan; la segunda ve `PAID` y falla **antes** de
   cobrar. Medido en MySQL real: 1 cobro, 1 factura, stock descontado una vez (`cobros=1 facturas=1`).
 
+## Limitaciones conocidas (decididas y pendientes)
+
+- **El identificador de transacción del cobro se guarda** en `orders.payment_transaction_id` (migración `V3`).
+  `OrderService.confirmPayment` lo registra y lo usan `processRefund` y la cancelación de un pedido pagado. Los pedidos
+  anteriores a `V3` (columna nula) usan la referencia derivada `"CHARGE-" + orderId`, como antes.
+- **Cancelar un pedido pagado** reembolsa el total por la pasarela y repone el stock. Si la pasarela falla, la excepción
+  revierte todo: el pedido sigue `PAID` y no se repone nada.
+- **Pago simulado bloqueado en producción.** Con el perfil `prod` la aplicación no arranca si
+  `nexusmarket.payment.simulated.allowed` no es `true` (`LoggingPaymentServicePort`).
+- **Reembolsos:** el estado `PENDING` se comprueba y se bloquea la fila **antes** de llamar a la pasarela, y un fallo de
+  la pasarela deja el reembolso en `FAILED` (no se reintenta solo). Eso evita un doble reembolso desde esta aplicación,
+  pero no resuelve el caso de la sección siguiente (resultado desconocido tras un timeout).
+
 ## Lo que NO se puede afirmar
 
 El bloqueo de base de datos **no garantiza exactamente un cobro externo ante cualquier fallo**:

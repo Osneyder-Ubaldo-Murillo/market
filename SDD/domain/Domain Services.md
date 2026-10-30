@@ -69,7 +69,7 @@ public class UserManagementService {
 }
 ```
 
-> **Nota (pendiente)**: el catálogo `OperationType` no incluye códigos para aprobación de vendedores ni cambios de estado de usuario. Se recomienda agregar `SELLER_APPROVAL`, `USER_BLOCK`, `USER_ACTIVATION` y `USER_DEACTIVATION` en la siguiente iteración del catálogo.
+> **Nota (resuelta)**: el catálogo `OperationType` ya incluye `SELLER_APPROVAL`, `USER_BLOCK`, `USER_ACTIVATION` y `USER_DEACTIVATION`, y `UserManagementService` los registra.
 
 ---
 

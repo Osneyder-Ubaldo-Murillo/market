@@ -206,7 +206,10 @@ public interface AuditLogRepositoryPort {
 
 **Propósito**: pasarela de pagos: cobro de pedidos y reembolsos.
 **Usado por**: `OrderService`, `ReturnRefundService`.
-**Implementado por**: `adapters.out.payment`.
+**Implementado por**: `adapters.out.payment.LoggingPaymentServicePort`, una **simulación académica que no cobra**. Con el
+perfil `prod` la aplicación no arranca salvo que se declare `nexusmarket.payment.simulated.allowed=true`.
+**Limitación pendiente**: el identificador de transacción devuelto por `charge` no se persiste en el pedido (requiere un
+cambio de esquema); ver `market/docs/PAGOS_IDEMPOTENCIA.md`.
 
 ```java
 public interface PaymentServicePort {
@@ -215,7 +218,7 @@ public interface PaymentServicePort {
 }
 ```
 
-> **Decisión de diseño**: la confirmación devuelve el VO `PaymentConfirmation` (transacción, fecha y método), que `OrderService` y `ReturnRefundService` usan para actualizar el estado del pedido o del reembolso.
+> **Decisión de diseño**: la confirmación devuelve el VO `PaymentConfirmation` (transacción, fecha y método). Hoy `OrderService` solo usa el resultado para devolverlo al cliente; el estado del pedido o del reembolso cambia si la llamada no lanza excepción.
 
 ### ShippingProviderPort
 
@@ -233,8 +236,10 @@ public interface ShippingProviderPort {
 ### NotificationPort
 
 **Propósito**: envío de notificaciones por canal (`NotificationChannel`).
-**Usado por**: capa de aplicación (orquestador de eventos).
-**Implementado por**: `adapters.out.notification`.
+**Usado por**: la capa de aplicación, mediante `OrderNotifier`, que avisa al comprador (pedido creado, pagado, despachado,
+cancelado y estados del envío) **después de confirmar la transacción**; un fallo al notificar nunca revierte la operación.
+**Implementado por**: `adapters.out.notification.LoggingNotificationPort`, una **simulación que escribe en el log** con el
+destinatario enmascarado. Para integrar correo, SMS o push basta otro adaptador del mismo puerto.
 
 ```java
 public interface NotificationPort {
@@ -304,10 +309,10 @@ public interface BusinessConfigurationPort {
 | `ShippingRepositoryPort`    | MySQL (JPA)               | `ShippingService`                                 |
 | `ReturnRepositoryPort`      | MySQL (JPA)               | `ReturnRefundService`                             |
 | `RefundRepositoryPort`      | MySQL (JPA)               | `ReturnRefundService`                             |
-| `AuditLogRepositoryPort`    | MongoDB                   | `AuditService`                                    |
-| `PaymentServicePort`        | Pasarela de pagos         | `OrderService`, `ReturnRefundService`             |
+| `AuditLogRepositoryPort`    | MongoDB (perfil `prod` o `mongodb`); log en desarrollo | `AuditService`               |
+| `PaymentServicePort`        | Pasarela **simulada** (bloqueada en `prod` salvo autorización expresa) | `OrderService`, `ReturnRefundService` |
 | `ShippingProviderPort`      | Transportadora            | `ShippingService`                                 |
-| `NotificationPort`          | Correo/SMS/Push           | Capa de aplicación                                |
+| `NotificationPort`          | Log (simulado); correo/SMS/push futuros | Capa de aplicación (`OrderNotifier`)  |
 | `PasswordServicePort`       | Seguridad (BCrypt)        | Capa de aplicación                                |
 | `JwtServicePort`            | Seguridad (JWT)           | Capa de aplicación                                |
 | `BusinessConfigurationPort` | Configuración             | `ReturnRefundService`, `CartService`              |

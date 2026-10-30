@@ -46,7 +46,15 @@ Todos los casos de uso respetan este orden; ninguno lo viola, por lo que no pued
 2. **Inventarios**, ordenados por `(product_id, inventory_id)` ascendente: los productos de una operación se
    procesan por `productId` ascendente (`OrderService.inLockOrder`) y, dentro de un producto, los
    inventarios por `inventory_id` ascendente.
-3. Las operaciones directas sobre un inventario por id (`reserve`, `release`, `addStock`, `adjust`,
+3. **Devoluciones y reembolsos** (`returns`, `refunds`): `ReturnRepositoryPort.findById` y
+   `RefundRepositoryPort.findById` también bloquean la fila (`findForUpdate`) dentro de una transacción.
+   Las operaciones sobre una devolución (`approveReturn`, `rejectReturn`, `processReturn`) toman el bloqueo de la
+   **devolución primero y del pedido después**; ningún caso de uso toma un pedido y después una devolución existente
+   (`requestReturn` bloquea el pedido e **inserta** una devolución nueva, que nadie más puede tener todavía), así que no
+   hay ciclo. `processRefund` bloquea solo la fila del reembolso y comprueba que siga `PENDING` **antes** de llamar a
+   la pasarela. **Pendiente de verificar en MySQL real**: este orden y la serialización se probaron en H2
+   (`RefundConsistencyIntegrationTest`); las pruebas `*MySqlTest` actuales no cubren devoluciones.
+4. Las operaciones directas sobre un inventario por id (`reserve`, `release`, `addStock`, `adjust`,
    `markDamaged`, `markActive`, `createInventory`) bloquean **una sola fila**: no pueden formar ciclo.
 
 Un pedido nuevo (`createOrder`) inserta su fila (nadie más puede tenerla) y bloquea después los inventarios
@@ -64,7 +72,9 @@ productos A-B y B-A); **comprobación por mutación**: sin la ordenación por pr
 | `dispatch` / `deliver` (pedido) | pedido | RC |
 | `Shipping.*` | pedido (y envío) | RC |
 | `generateInvoice` | pedido | RC |
-| `approveReturn` / `processReturn` | pedido → inventarios por producto asc. | RC |
+| `approveReturn` / `processReturn` | devolución → pedido → inventarios por producto asc. | RC |
+| `rejectReturn` | devolución | RC |
+| `processRefund` | reembolso (estado PENDING comprobado antes de la pasarela; FAILED se conserva si la pasarela falla) | RC, `noRollbackFor` `BusinessException` |
 | `Inventory.*` (reserve, release, addStock, adjust, markDamaged, markActive) | 1 inventario | RC |
 | `registerBuyer` / `registerSeller` | sin bloqueos de fila | por defecto |
 | Operaciones de una sola escritura sobre catálogo, carrito, bodegas | — | sin transacción |
