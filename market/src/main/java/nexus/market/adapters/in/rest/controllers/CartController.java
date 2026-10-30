@@ -1,6 +1,6 @@
 package nexus.market.adapters.in.rest.controllers;
 
-import nexus.market.adapters.in.rest.security.AccessPolicy;
+import nexus.market.application.AccessPolicy;
 import jakarta.validation.Valid;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;

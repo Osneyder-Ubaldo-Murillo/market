@@ -35,6 +35,8 @@ public class PasswordAttemptLimiter {
     }
 
     private final Clock clock;
+    private final int maxAttempts;
+    private final Duration window;
     private final Map<String, Window> windows = new ConcurrentHashMap<>();
 
     @Autowired
@@ -43,7 +45,17 @@ public class PasswordAttemptLimiter {
     }
 
     public PasswordAttemptLimiter(Clock clock) {
+        this(clock, MAX_ATTEMPTS, WINDOW);
+    }
+
+    /** Mismo mecanismo con otro límite y otra ventana (lo reutiliza {@link LoginAttemptLimiter}). */
+    PasswordAttemptLimiter(Clock clock, int maxAttempts, Duration window) {
         this.clock = Objects.requireNonNull(clock, "clock es obligatorio");
+        if (maxAttempts < 1 || window == null || window.isZero() || window.isNegative()) {
+            throw new IllegalArgumentException("El límite y la ventana deben ser positivos.");
+        }
+        this.maxAttempts = maxAttempts;
+        this.window = window;
     }
 
     /**
@@ -54,18 +66,18 @@ public class PasswordAttemptLimiter {
     public void acquire(String key) {
         Instant now = clock.instant();
         long[] retryAfter = { 0 };
-        windows.compute(key, (k, window) -> {
-            if (window == null || !now.isBefore(window.start().plus(WINDOW))) {
+        windows.compute(key, (k, current) -> {
+            if (current == null || !now.isBefore(current.start().plus(window))) {
                 return new Window(now, 1); // ventana nueva
             }
-            if (window.attempts() >= MAX_ATTEMPTS) {
-                retryAfter[0] = Duration.between(now, window.start().plus(WINDOW)).toSeconds() + 1;
-                return window; // sin cambios: se rechaza
+            if (current.attempts() >= maxAttempts) {
+                retryAfter[0] = Duration.between(now, current.start().plus(window)).toSeconds() + 1;
+                return current; // sin cambios: se rechaza
             }
-            return new Window(window.start(), window.attempts() + 1);
+            return new Window(current.start(), current.attempts() + 1);
         });
         if (windows.size() > PURGE_THRESHOLD) {
-            windows.entrySet().removeIf(entry -> !now.isBefore(entry.getValue().start().plus(WINDOW)));
+            windows.entrySet().removeIf(entry -> !now.isBefore(entry.getValue().start().plus(window)));
         }
         if (retryAfter[0] > 0) {
             throw new TooManyAttemptsException(retryAfter[0]);

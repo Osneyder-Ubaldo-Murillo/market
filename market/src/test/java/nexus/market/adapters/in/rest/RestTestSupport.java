@@ -42,7 +42,17 @@ import nexus.market.domain.valueobjects.SystemRole;
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "spring.jpa.show-sql=false",
         "spring.data.mongodb.uri=",
-        "spring.data.mongodb.database=test_audit"
+        "spring.data.mongodb.database=test_audit",
+        // Las pruebas comparten la IP 127.0.0.1 y hacen muchos logins: el límite por cliente no debe interferir.
+        // El límite de login se prueba en LoginRateLimitIntegrationTest con su propia configuración.
+        "nexusmarket.login.max-per-client=100000",
+        "nexusmarket.login.max-per-email=100000",
+        "nexusmarket.registration.max-per-client=100000",
+        "nexusmarket.registration.max-per-email=100000",
+        "nexusmarket.recovery.max-per-client=100000",
+        "nexusmarket.recovery.max-per-email=100000",
+        "nexusmarket.verification.max-per-client=100000",
+        "nexusmarket.verification.max-per-email=100000"
 })
 public abstract class RestTestSupport {
 
@@ -82,7 +92,15 @@ public abstract class RestTestSupport {
         String registered = send(HttpMethod.POST, "/api/auth/register/buyer", null,
                 body("fullName", "Comprador " + suffix, "email", email, "documentId", "CC-" + suffix,
                         "password", PASSWORD, "address", addressJson()), 201);
+        verifyEmail(JsonPath.read(registered, "$.userId"));
         return login(JsonPath.read(registered, "$.buyerId"), email);
+    }
+
+    /** Verifica el correo del usuario como lo haría el enlace recibido: con un código válido en el endpoint público. */
+    protected void verifyEmail(String userId) throws Exception {
+        String code = jwt.issueEmailVerificationToken(nexus.market.domain.valueobjects.UserId.of(userId),
+                java.time.Duration.ofHours(1));
+        send(HttpMethod.POST, "/api/auth/email/verify", null, body("token", code), 200);
     }
 
     /** Registra un vendedor con token ADMIN, lo aprueba y le crea una bodega propia. */
@@ -96,6 +114,7 @@ public abstract class RestTestSupport {
                 201);
         String sellerId = JsonPath.read(registered, "$.sellerId");
         send(HttpMethod.POST, "/api/sellers/" + sellerId + "/approve", adminToken, "{}", 200);
+        verifyEmail(JsonPath.read(registered, "$.userId"));
         return login(sellerId, email);
     }
 

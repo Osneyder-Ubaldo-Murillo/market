@@ -10,6 +10,8 @@ import nexus.market.domain.exceptions.BusinessException;
 import nexus.market.domain.models.Buyer;
 import nexus.market.domain.models.Seller;
 import nexus.market.domain.models.User;
+import nexus.market.domain.ports.in.EmailVerificationUseCases;
+import nexus.market.domain.valueobjects.SystemRole;
 import nexus.market.domain.ports.in.AuthUseCases;
 import nexus.market.domain.ports.out.JwtServicePort;
 import nexus.market.domain.ports.out.PasswordServicePort;
@@ -42,17 +44,24 @@ public class AuthApplicationService implements AuthUseCases {
     private final CredentialStorePort credentials;
     private final PasswordServicePort passwordService;
     private final JwtServicePort jwtService;
+    private final EmailVerificationUseCases emailVerification;
+    private final LoginLockout lockout;
+    private volatile String dummyHash;
 
     public AuthApplicationService(UserManagementService userManagement,
                                   UserRepositoryPort users,
                                   CredentialStorePort credentials,
                                   PasswordServicePort passwordService,
-                                  JwtServicePort jwtService) {
+                                  JwtServicePort jwtService,
+                                  EmailVerificationUseCases emailVerification,
+                                  LoginLockout lockout) {
         this.userManagement = Objects.requireNonNull(userManagement, "userManagement es obligatorio");
         this.users = Objects.requireNonNull(users, "users es obligatorio");
         this.credentials = Objects.requireNonNull(credentials, "credentials es obligatorio");
         this.passwordService = Objects.requireNonNull(passwordService, "passwordService es obligatorio");
         this.jwtService = Objects.requireNonNull(jwtService, "jwtService es obligatorio");
+        this.emailVerification = Objects.requireNonNull(emailVerification, "emailVerification es obligatorio");
+        this.lockout = Objects.requireNonNull(lockout, "lockout es obligatorio");
     }
 
     @Override
@@ -64,6 +73,8 @@ public class AuthApplicationService implements AuthUseCases {
         // Usuario + perfil + credenciales: una sola transacción (todo o nada).
         Buyer buyer = userManagement.registerBuyer(fullName, email, documentId, mainAddress);
         credentials.save(buyer.getUserId(), hash);
+        // El correo debe verificarse antes de poder iniciar sesión; el código se envía al confirmarse el registro.
+        emailVerification.sendVerificationCode(buyer.getUserId(), email);
         return buyer;
     }
 
@@ -74,26 +85,65 @@ public class AuthApplicationService implements AuthUseCases {
         String hash = passwordService.hash(requireHashablePassword(rawPassword));
         Seller seller = userManagement.registerSeller(fullName, email, documentId, businessName, taxId);
         credentials.save(seller.getUserId(), hash);
+        emailVerification.sendVerificationCode(seller.getUserId(), email);
         return seller;
     }
 
     @Override
     public AuthResult login(Email email, String rawPassword) {
         Objects.requireNonNull(email, "email es obligatorio");
-        User user = users.findByEmail(email)
-                .orElseThrow(() -> invalidCredentials());
-        String storedHash = credentials.findByUserId(user.getUserId())
-                .orElseThrow(() -> invalidCredentials());
-        if (!passwordService.verify(requirePassword(rawPassword), storedHash)) {
+        User user = users.findByEmail(email).orElse(null);
+        String storedHash = user == null ? null : credentials.findByUserId(user.getUserId()).orElse(null);
+        if (storedHash == null) {
+            // Se verifica igualmente contra un hash ficticio: sin esto, un email inexistente responde mucho más rápido
+            // (no hay BCrypt) y el tiempo de respuesta revelaría qué cuentas existen.
+            passwordService.verify(rawPassword, dummyHash());
             throw invalidCredentials();
         }
+        if (!passwordService.verify(requirePassword(rawPassword), storedHash)) {
+            blockAfterRepeatedFailures(user, email);
+            throw invalidCredentials();
+        }
+        lockout.reset(email.getValue());
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw new BusinessException("USER_NOT_ACTIVE",
                     "El usuario no está activo; contacte al administrador.");
         }
+        if (!user.isEmailVerified()) {
+            throw new BusinessException("EMAIL_NOT_VERIFIED",
+                    "Debe verificar su correo antes de iniciar sesión. Puede pedir un código nuevo.");
+        }
         // El token lleva la huella de la credencial vigente: al cambiar la contraseña, los anteriores dejan de valer.
         String token = jwtService.issue(user.getUserId(), user.getRole(), jwtService.credentialVersion(storedHash));
         return new AuthResult(token, user.getUserId(), user.getRole());
+    }
+
+    /**
+     * Cuenta el fallo y, al llegar al tope (3 por defecto), bloquea la cuenta: solo un ADMIN puede reactivarla. El ADMIN
+     * nunca se bloquea por este camino (nadie podría desbloquearlo) y una cuenta que no está ACTIVE no se cuenta. La
+     * respuesta del intento que bloquea es la misma que la de cualquier credencial incorrecta.
+     */
+    private void blockAfterRepeatedFailures(User user, Email email) {
+        if (user.getStatus() != UserStatus.ACTIVE || user.getRole() == SystemRole.ADMIN) {
+            return;
+        }
+        if (lockout.registerFailure(email.getValue())) {
+            try {
+                userManagement.blockUser(user.getUserId());
+            } catch (BusinessException alreadyBlocked) {
+                // otro intento simultáneo ya la bloqueó
+            }
+        }
+    }
+
+    /** Hash BCrypt de una contraseña aleatoria que nadie conoce; se calcula una sola vez, en el primer uso. */
+    private String dummyHash() {
+        String hash = dummyHash;
+        if (hash == null) {
+            hash = passwordService.hash(java.util.UUID.randomUUID().toString());
+            dummyHash = hash;
+        }
+        return hash;
     }
 
     /** BCrypt solo procesa 72 bytes: se rechaza (400), nunca se trunca en silencio. */

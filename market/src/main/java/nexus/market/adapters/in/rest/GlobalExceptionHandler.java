@@ -49,14 +49,29 @@ public class GlobalExceptionHandler {
         return response.body(new ErrorResponse(ex.getCode(), ex.getMessage(), LocalDateTime.now()));
     }
 
+    /** Mensaje genérico para un {@link IllegalArgumentException} que no nace en el código de NexusMarket. */
+    static final String GENERIC_VALIDATION_MESSAGE = "Algún valor de la petición no es válido.";
+
     /**
      * Errores de validación de los Value Objects (lanzados al construir un VO
-     * inválido desde un DTO) → 400.
+     * inválido desde un DTO) → 400. Solo se devuelve el mensaje si la excepción la lanzó código del propio proyecto
+     * ({@code nexus.market.*}, mensajes escritos para el cliente); la de una librería o del JDK (p. ej. el texto de un
+     * parser) puede contener detalles internos, así que se sustituye por un mensaje genérico y el detalle queda en el log.
      */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
+        String message = ex.getMessage();
+        if (!thrownByApplicationCode(ex) || message == null || message.isBlank()) {
+            log.debug("IllegalArgumentException ajena al dominio; se responde con un mensaje genérico.", ex);
+            message = GENERIC_VALIDATION_MESSAGE;
+        }
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(new ErrorResponse("VALIDATION_ERROR", ex.getMessage(), LocalDateTime.now()));
+                .body(new ErrorResponse("VALIDATION_ERROR", message, LocalDateTime.now()));
+    }
+
+    private static boolean thrownByApplicationCode(Throwable error) {
+        StackTraceElement[] trace = error.getStackTrace();
+        return trace.length > 0 && trace[0].getClassName().startsWith("nexus.market.");
     }
 
     /** Fallo de Bean Validation (@Valid) en el cuerpo de la petición → 400. */
@@ -166,6 +181,7 @@ public class GlobalExceptionHandler {
         }
         if (code.equals("USER_ALREADY_EXISTS")
                 || code.equals("INVENTORY_ALREADY_EXISTS")
+                || code.equals("RETURN_ALREADY_EXISTS")
                 || code.equals("INVALID_STATE_TRANSITION")
                 || code.equals("ADDRESS_LIMIT_EXCEEDED")) {
             return HttpStatus.CONFLICT;
@@ -176,7 +192,7 @@ public class GlobalExceptionHandler {
         if (code.equals("INVALID_CREDENTIALS")) {
             return HttpStatus.UNAUTHORIZED;
         }
-        if (code.equals("USER_NOT_ACTIVE") || code.equals("INACTIVE_BUYER")) {
+        if (code.equals("USER_NOT_ACTIVE") || code.equals("INACTIVE_BUYER") || code.equals("EMAIL_NOT_VERIFIED")) {
             return HttpStatus.FORBIDDEN;
         }
         return HttpStatus.BAD_REQUEST;

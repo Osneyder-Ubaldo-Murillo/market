@@ -58,7 +58,7 @@ public class UserManagementService {
                                Address mainAddress) {
         requireUnique(email, documentId);
 
-        User user = users.save(User.create(fullName, email, documentId, SystemRole.BUYER));
+        User user = users.save(User.createPendingVerification(fullName, email, documentId, SystemRole.BUYER));
         Buyer buyer = buyers.save(Buyer.create(user.getUserId(), mainAddress));
 
         audit.record(OperationType.USER_REGISTRATION, AuditSeverity.INFO,
@@ -77,7 +77,7 @@ public class UserManagementService {
                                  BusinessName businessName, TaxId taxId) {
         requireUnique(email, documentId);
 
-        User user = users.save(User.create(fullName, email, documentId, SystemRole.SELLER));
+        User user = users.save(User.createPendingVerification(fullName, email, documentId, SystemRole.SELLER));
         Seller seller = sellers.save(Seller.create(user.getUserId(), businessName, taxId));
 
         audit.record(OperationType.SELLER_REGISTRATION, AuditSeverity.INFO,

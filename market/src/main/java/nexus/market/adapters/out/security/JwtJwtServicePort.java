@@ -6,6 +6,7 @@ import java.util.Base64;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
@@ -132,10 +133,83 @@ public class JwtJwtServicePort implements JwtServicePort {
         }
     }
 
+    /** Claim que distingue un token de recuperación de contraseña de un token de acceso. */
+    static final String PURPOSE_CLAIM = "purpose";
+    static final String PASSWORD_RESET_PURPOSE = "password-reset";
+    static final String EMAIL_VERIFICATION_PURPOSE = "email-verification";
+
+    @Override
+    public String issuePasswordResetToken(UserId userId, String credentialVersion, Duration validity) {
+        Objects.requireNonNull(userId, "userId es obligatorio");
+        Objects.requireNonNull(credentialVersion, "credentialVersion es obligatorio");
+        Objects.requireNonNull(validity, "validity es obligatorio");
+        Instant now = Instant.now();
+        return JWT.create()
+                .withIssuer(issuer)
+                .withSubject(userId.value())
+                .withClaim(PURPOSE_CLAIM, PASSWORD_RESET_PURPOSE)
+                .withClaim(CREDENTIAL_VERSION_CLAIM, credentialVersion)
+                .withIssuedAt(now)
+                .withExpiresAt(now.plus(validity))
+                .sign(Algorithm.HMAC256(secret));
+    }
+
+    @Override
+    public Optional<PasswordResetClaims> parsePasswordResetToken(String token) {
+        try {
+            DecodedJWT decoded = JWT.require(Algorithm.HMAC256(secret)).withIssuer(issuer)
+                    .withClaim(PURPOSE_CLAIM, PASSWORD_RESET_PURPOSE).build().verify(token);
+            String version = decoded.getClaim(CREDENTIAL_VERSION_CLAIM).asString();
+            if (version == null || decoded.getExpiresAt() == null) {
+                return Optional.empty();
+            }
+            return Optional.of(new PasswordResetClaims(UserId.of(decoded.getSubject()), version));
+        } catch (JWTVerificationException | IllegalArgumentException ex) {
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public String issueEmailVerificationToken(UserId userId, Duration validity) {
+        Objects.requireNonNull(userId, "userId es obligatorio");
+        Objects.requireNonNull(validity, "validity es obligatorio");
+        Instant now = Instant.now();
+        return JWT.create()
+                .withIssuer(issuer)
+                .withSubject(userId.value())
+                .withClaim(PURPOSE_CLAIM, EMAIL_VERIFICATION_PURPOSE)
+                .withIssuedAt(now)
+                .withExpiresAt(now.plus(validity))
+                .sign(Algorithm.HMAC256(secret));
+    }
+
+    @Override
+    public Optional<UserId> parseEmailVerificationToken(String token) {
+        try {
+            DecodedJWT decoded = JWT.require(Algorithm.HMAC256(secret)).withIssuer(issuer)
+                    .withClaim(PURPOSE_CLAIM, EMAIL_VERIFICATION_PURPOSE).build().verify(token);
+            if (decoded.getExpiresAt() == null) {
+                return Optional.empty();
+            }
+            return Optional.of(UserId.of(decoded.getSubject()));
+        } catch (JWTVerificationException | IllegalArgumentException ex) {
+            return Optional.empty();
+        }
+    }
+
+    /** Verifica un token de ACCESO: firma, emisor, expiración y que NO sea de otro tipo (p. ej. recuperación). */
+    private DecodedJWT verifyAccessToken(String token) {
+        DecodedJWT decoded = JWT.require(Algorithm.HMAC256(secret)).withIssuer(issuer).build().verify(token);
+        if (!decoded.getClaim(PURPOSE_CLAIM).isMissing()) {
+            throw new JWTVerificationException("El token no es de acceso.");
+        }
+        return decoded;
+    }
+
     @Override
     public Optional<String> getCredentialVersion(String token) {
         try {
-            DecodedJWT decoded = JWT.require(Algorithm.HMAC256(secret)).withIssuer(issuer).build().verify(token);
+            DecodedJWT decoded = verifyAccessToken(token);
             return Optional.ofNullable(decoded.getClaim(CREDENTIAL_VERSION_CLAIM).asString());
         } catch (JWTVerificationException | IllegalArgumentException ex) {
             return Optional.empty();
@@ -154,10 +228,7 @@ public class JwtJwtServicePort implements JwtServicePort {
 
     private UserId getUserIdInternal(String token) {
         try {
-            DecodedJWT decoded = JWT.require(Algorithm.HMAC256(secret))
-                    .withIssuer(issuer)
-                    .build()
-                    .verify(token);
+            DecodedJWT decoded = verifyAccessToken(token);
             return UserId.of(decoded.getSubject());
         } catch (JWTVerificationException | IllegalArgumentException ex) {
             return null;

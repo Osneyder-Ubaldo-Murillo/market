@@ -54,6 +54,35 @@ public final class AuthRequests {
         }
     }
 
+    /** Solicitud de código de recuperación de contraseña. */
+    public record ForgotPasswordRequest(
+            @NotBlank(message = "email es obligatorio") @Size(max = 160, message = "email no puede exceder 160 caracteres") @Email(message = "email debe tener un formato válido") String email) {
+    }
+
+    /** Canje del código de recuperación. {@code toString()} oculta el código y la contraseña. */
+    public record ResetPasswordRequest(
+            @NotBlank(message = "token es obligatorio") @Size(max = 2048, message = "token no puede exceder 2048 caracteres") String token,
+            @NotBlank(message = "newPassword es obligatorio") @Size(min = 8, message = "newPassword debe tener al menos 8 caracteres") @MaxUtf8Bytes(value = 72, message = "newPassword no puede superar 72 bytes en UTF-8 (límite de BCrypt)") String newPassword) {
+        @Override
+        public String toString() {
+            return "ResetPasswordRequest[token=***, newPassword=***]";
+        }
+    }
+
+    /** Canje del código de verificación de correo. */
+    public record VerifyEmailRequest(
+            @NotBlank(message = "token es obligatorio") @Size(max = 2048, message = "token no puede exceder 2048 caracteres") String token) {
+        @Override
+        public String toString() {
+            return "VerifyEmailRequest[token=***]";
+        }
+    }
+
+    /** Reenvío del código de verificación. */
+    public record ResendVerificationRequest(
+            @NotBlank(message = "email es obligatorio") @Size(max = 160, message = "email no puede exceder 160 caracteres") @Email(message = "email debe tener un formato válido") String email) {
+    }
+
     public record LoginRequest(
             @NotBlank(message = "email es obligatorio") @Email(message = "email debe tener un formato válido") String email,
             @NotBlank(message = "password es obligatorio") String password) {

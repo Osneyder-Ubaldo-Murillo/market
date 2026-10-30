@@ -21,7 +21,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import nexus.market.adapters.in.rest.security.RestSecurityHandlers;
-import nexus.market.adapters.out.security.JwtAuthenticationFilter;
+import nexus.market.adapters.in.rest.security.JwtAuthenticationFilter;
 import nexus.market.application.CredentialStorePort;
 import nexus.market.domain.ports.out.JwtServicePort;
 import nexus.market.domain.ports.out.UserRepositoryPort;
@@ -86,7 +86,9 @@ public class SecurityConfiguration {
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
 
                         // ---- Públicos ----
-                        .requestMatchers(HttpMethod.POST, "/api/auth/register/buyer", "/api/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/register/buyer", "/api/auth/login",
+                                "/api/auth/password/forgot", "/api/auth/password/reset",
+                                "/api/auth/email/verify", "/api/auth/email/resend").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**").permitAll()
 
@@ -114,6 +116,7 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.PUT, "/api/buyers/*/cart/items/*").hasRole(BUYER)
                         .requestMatchers(HttpMethod.DELETE, "/api/buyers/*/cart/items/*").hasRole(BUYER)
                         .requestMatchers(HttpMethod.POST, "/api/buyers/*/orders").hasRole(BUYER)
+                        .requestMatchers(HttpMethod.GET, "/api/buyers/*/orders").hasRole(BUYER)
                         .requestMatchers(HttpMethod.POST, "/api/orders/*/payment").hasRole(BUYER)
                         .requestMatchers(HttpMethod.POST, "/api/orders/*/cancel").hasRole(BUYER)
                         .requestMatchers(HttpMethod.POST, "/api/orders/*/returns").hasRole(BUYER)
@@ -128,6 +131,7 @@ public class SecurityConfiguration {
                                 "/api/shippings/*/in-transit", "/api/shippings/*/deliver").hasRole(OPERATOR)
 
                         // ---- Facturación (el vendedor queda excluido por ahora) ----
+                        .requestMatchers(HttpMethod.GET, "/api/buyers/*/invoices").hasRole(BUYER)
                         .requestMatchers(HttpMethod.GET, "/api/invoices/*", "/api/orders/*/invoice")
                         .hasAnyRole(BUYER, ADMIN, SUPERVISOR)
                         .requestMatchers(HttpMethod.POST, "/api/orders/*/invoice", "/api/invoices/*/cancel")
@@ -145,6 +149,7 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.POST, "/api/products/*/publish", "/api/products/*/unpublish")
                         .hasRole(SELLER)
                         .requestMatchers(HttpMethod.PUT, "/api/products/*/price").hasRole(SELLER)
+                        .requestMatchers(HttpMethod.PUT, "/api/products/*").hasRole(SELLER)
 
                         // ---- Bodegas ----
                         .requestMatchers(HttpMethod.POST, "/api/warehouses/marketplace",
@@ -193,6 +198,8 @@ public class SecurityConfiguration {
             configuration.setAllowedOrigins(origins);
             configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
             configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
+            // Cabeceras que el navegador puede leer: total de los listados paginados y espera tras un 429.
+            configuration.setExposedHeaders(List.of("X-Total-Count", "Retry-After"));
             configuration.setAllowCredentials(true);
             configuration.setMaxAge(3600L);
             source.registerCorsConfiguration("/**", configuration);

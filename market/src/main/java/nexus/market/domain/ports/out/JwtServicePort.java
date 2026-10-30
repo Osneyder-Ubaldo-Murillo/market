@@ -29,6 +29,29 @@ public interface JwtServicePort {
     /** Claim {@code pwv} de un token válido, si lo lleva. */
     Optional<String> getCredentialVersion(String token);
 
+    /**
+     * Emite un token de recuperación de contraseña: firmado, de vida corta y ligado a la credencial vigente
+     * ({@code credentialVersion}), de modo que deja de valer en cuanto la contraseña cambia (uso único). NO es un token
+     * de acceso: {@link #isValid}, {@link #getUserId} y {@link #getCredentialVersion} lo rechazan.
+     */
+    String issuePasswordResetToken(UserId userId, String credentialVersion, java.time.Duration validity);
+
+    /** Usuario y huella de credencial de un token de recuperación válido; vacío si no lo es (firma, emisor, expiración o tipo). */
+    Optional<PasswordResetClaims> parsePasswordResetToken(String token);
+
+    /**
+     * Emite un código de verificación de correo: firmado, de vida limitada y ligado al usuario. No es un token de acceso
+     * ni de recuperación: {@link #isValid} lo rechaza y {@link #parsePasswordResetToken} también.
+     */
+    String issueEmailVerificationToken(UserId userId, java.time.Duration validity);
+
+    /** Usuario de un código de verificación de correo válido; vacío si no lo es (firma, emisor, expiración o tipo). */
+    Optional<UserId> parseEmailVerificationToken(String token);
+
+    /** Contenido verificado de un token de recuperación de contraseña. */
+    record PasswordResetClaims(UserId userId, String credentialVersion) {
+    }
+
     boolean isValid(String token);
 
     Optional<UserId> getUserId(String token);

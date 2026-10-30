@@ -20,6 +20,9 @@ public final class OperationType extends DomainCatalog {
 
     // Rotación de la contraseña del administrador (auditoría sin contraseñas ni hashes).
     public static final OperationType PASSWORD_CHANGE = new OperationType("PASSWORD_CHANGE", "Cambio de Contraseña", "Cambio de la contraseña de un administrador");
+    public static final OperationType EMAIL_VERIFICATION = new OperationType("EMAIL_VERIFICATION", "Verificación de Correo", "El usuario verificó su correo electrónico");
+    public static final OperationType PASSWORD_RESET_REQUEST = new OperationType("PASSWORD_RESET_REQUEST", "Solicitud de Recuperación de Contraseña", "Se emitió un código de recuperación de contraseña");
+    public static final OperationType PASSWORD_RESET = new OperationType("PASSWORD_RESET", "Recuperación de Contraseña", "Contraseña restablecida con un código de recuperación");
     public static final OperationType PASSWORD_CHANGE_FAILED = new OperationType("PASSWORD_CHANGE_FAILED", "Cambio de Contraseña Fallido", "Intento fallido de cambio de contraseña (contraseña actual incorrecta)");
 
     public static final OperationType PRODUCT_CREATION = new OperationType("PRODUCT_CREATION", "Creación de Producto", "Creación de un producto");

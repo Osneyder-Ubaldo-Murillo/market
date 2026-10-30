@@ -29,9 +29,19 @@ public class User {
     private UserStatus status;
     private final LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    /** Momento en que se verificó el correo; {@code null} mientras no esté verificado. */
+    private LocalDateTime emailVerifiedAt;
 
+    /** Usuario con el correo ya verificado (personal creado fuera del registro, administrador inicial, datos previos). */
     public User(UserId userId, FullName fullName, Email email, DocumentId documentId,
                 SystemRole role, UserStatus status, LocalDateTime createdAt, LocalDateTime updatedAt) {
+        this(userId, fullName, email, documentId, role, status, createdAt, updatedAt, createdAt);
+    }
+
+    public User(UserId userId, FullName fullName, Email email, DocumentId documentId,
+                SystemRole role, UserStatus status, LocalDateTime createdAt, LocalDateTime updatedAt,
+                LocalDateTime emailVerifiedAt) {
+        this.emailVerifiedAt = emailVerifiedAt;
         this.userId = Objects.requireNonNull(userId, "userId es obligatorio");
         this.fullName = Objects.requireNonNull(fullName, "fullName es obligatorio");
         this.email = Objects.requireNonNull(email, "email es obligatorio");
@@ -54,6 +64,31 @@ public class User {
     /**
      * {@code ACTIVE → BLOCKED}. Solo un usuario activo puede ser bloqueado.
      */
+    /**
+     * Usuario de registro público: ACTIVE pero con el correo SIN verificar; no puede iniciar sesión hasta verificarlo.
+     */
+    public static User createPendingVerification(FullName fullName, Email email, DocumentId documentId,
+                                                 SystemRole role) {
+        LocalDateTime now = LocalDateTime.now();
+        return new User(UserId.generate(), fullName, email, documentId, role, UserStatus.ACTIVE, now, now, null);
+    }
+
+    /** Marca el correo como verificado (idempotente: conserva la primera fecha). */
+    public void verifyEmail() {
+        if (emailVerifiedAt == null) {
+            this.emailVerifiedAt = LocalDateTime.now();
+            touch();
+        }
+    }
+
+    public boolean isEmailVerified() {
+        return emailVerifiedAt != null;
+    }
+
+    public LocalDateTime getEmailVerifiedAt() {
+        return emailVerifiedAt;
+    }
+
     public void block() {
         requireActive();
         this.status = UserStatus.BLOCKED;

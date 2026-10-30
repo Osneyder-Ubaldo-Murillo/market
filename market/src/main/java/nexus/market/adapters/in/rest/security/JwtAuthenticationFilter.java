@@ -1,4 +1,4 @@
-package nexus.market.adapters.out.security;
+package nexus.market.adapters.in.rest.security;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -22,7 +22,6 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import nexus.market.adapters.in.rest.DatabaseUnavailability;
-import nexus.market.adapters.in.rest.security.RestSecurityHandlers;
 import nexus.market.application.CredentialStorePort;
 import nexus.market.domain.models.User;
 import nexus.market.domain.ports.out.JwtServicePort;

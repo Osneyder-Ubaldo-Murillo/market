@@ -1,4 +1,4 @@
-package nexus.market.adapters.out.security;
+package nexus.market.adapters.in.rest.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -31,6 +31,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.CannotCreateTransactionException;
 
+import nexus.market.adapters.out.security.JwtJwtServicePort;
 import nexus.market.application.CredentialStorePort;
 import nexus.market.domain.models.User;
 import nexus.market.domain.ports.out.UserRepositoryPort;

@@ -1,5 +1,6 @@
 package nexus.market.adapters.in.rest.controllers;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
@@ -12,12 +13,23 @@ import org.springframework.web.bind.annotation.RestController;
 
 import nexus.market.adapters.in.rest.mappers.RestMappers;
 import nexus.market.adapters.in.rest.requests.AuthRequests.ChangePasswordRequest;
+import nexus.market.adapters.in.rest.requests.AuthRequests.ForgotPasswordRequest;
 import nexus.market.adapters.in.rest.requests.AuthRequests.LoginRequest;
+import nexus.market.adapters.in.rest.requests.AuthRequests.ResendVerificationRequest;
+import nexus.market.adapters.in.rest.requests.AuthRequests.ResetPasswordRequest;
+import nexus.market.adapters.in.rest.requests.AuthRequests.VerifyEmailRequest;
+import nexus.market.adapters.in.rest.responses.UserResponses.MessageResponse;
 import nexus.market.adapters.in.rest.requests.AuthRequests.RegisterBuyerRequest;
 import nexus.market.adapters.in.rest.requests.AuthRequests.RegisterSellerRequest;
 import nexus.market.adapters.in.rest.responses.UserResponses.BuyerResponse;
 import nexus.market.adapters.in.rest.responses.UserResponses.SellerResponse;
 import nexus.market.adapters.in.rest.responses.UserResponses.TokenResponse;
+import nexus.market.application.EmailVerificationLimiter;
+import nexus.market.application.LoginAttemptLimiter;
+import nexus.market.domain.ports.in.EmailVerificationUseCases;
+import nexus.market.application.PasswordRecoveryLimiter;
+import nexus.market.application.RegistrationAttemptLimiter;
+import nexus.market.domain.ports.in.PasswordRecoveryUseCases;
 import nexus.market.domain.models.Buyer;
 import nexus.market.domain.models.Seller;
 import nexus.market.domain.ports.in.AuthUseCases;
@@ -40,15 +52,34 @@ public class AuthController {
 
     private final AuthUseCases authUseCases;
     private final PasswordChangeUseCases passwordChangeUseCases;
+    private final LoginAttemptLimiter loginLimiter;
+    private final RegistrationAttemptLimiter registrationLimiter;
+    private final PasswordRecoveryLimiter recoveryLimiter;
+    private final PasswordRecoveryUseCases recoveryUseCases;
+    private final EmailVerificationLimiter verificationLimiter;
+    private final EmailVerificationUseCases verificationUseCases;
 
-    public AuthController(AuthUseCases authUseCases, PasswordChangeUseCases passwordChangeUseCases) {
+    public AuthController(AuthUseCases authUseCases, PasswordChangeUseCases passwordChangeUseCases,
+                          LoginAttemptLimiter loginLimiter, RegistrationAttemptLimiter registrationLimiter,
+                          PasswordRecoveryLimiter recoveryLimiter, PasswordRecoveryUseCases recoveryUseCases,
+                          EmailVerificationLimiter verificationLimiter,
+                          EmailVerificationUseCases verificationUseCases) {
+        this.verificationLimiter = verificationLimiter;
+        this.verificationUseCases = verificationUseCases;
         this.authUseCases = authUseCases;
         this.passwordChangeUseCases = passwordChangeUseCases;
+        this.loginLimiter = loginLimiter;
+        this.registrationLimiter = registrationLimiter;
+        this.recoveryLimiter = recoveryLimiter;
+        this.recoveryUseCases = recoveryUseCases;
     }
 
     /** Registra un comprador con contraseña. Devuelve el perfil creado. */
     @PostMapping("/register/buyer")
-    public ResponseEntity<BuyerResponse> registerBuyer(@Valid @RequestBody RegisterBuyerRequest request) {
+    public ResponseEntity<BuyerResponse> registerBuyer(@Valid @RequestBody RegisterBuyerRequest request,
+                                                       HttpServletRequest httpRequest) {
+        // Registro público: limitado por email y por cliente (429) contra la creación masiva de cuentas.
+        registrationLimiter.acquire(httpRequest.getRemoteAddr(), request.email());
         Buyer buyer = authUseCases.registerBuyer(
                 FullName.of(request.fullName()),
                 Email.of(request.email()),
@@ -85,9 +116,54 @@ public class AuthController {
                 result.token(), result.userId().value(), result.role().getCode()));
     }
 
+    /**
+     * Solicita un código de recuperación de contraseña. Responde siempre 202 con el mismo mensaje, exista o no el email.
+     * Limitado por email y por cliente (429).
+     */
+    @PostMapping("/password/forgot")
+    public ResponseEntity<MessageResponse> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request,
+                                                          HttpServletRequest httpRequest) {
+        recoveryLimiter.acquire(httpRequest.getRemoteAddr(), request.email());
+        recoveryUseCases.requestReset(Email.of(request.email()));
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(new MessageResponse(
+                "Si el correo corresponde a una cuenta que puede recuperarse, recibirá un código de recuperación."));
+    }
+
+    /** Restablece la contraseña con el código recibido (válido 30 minutos y de un solo uso). */
+    @PostMapping("/password/reset")
+    public ResponseEntity<MessageResponse> resetPassword(@Valid @RequestBody ResetPasswordRequest request,
+                                                         HttpServletRequest httpRequest) {
+        recoveryLimiter.acquireClient(httpRequest.getRemoteAddr());
+        recoveryUseCases.resetPassword(request.token(), request.newPassword());
+        return ResponseEntity.ok(new MessageResponse("Contraseña restablecida. Inicie sesión con la nueva contraseña."));
+    }
+
+    /** Verifica el correo con el código recibido; sin verificar no se puede iniciar sesión. */
+    @PostMapping("/email/verify")
+    public ResponseEntity<MessageResponse> verifyEmail(@Valid @RequestBody VerifyEmailRequest request,
+                                                       HttpServletRequest httpRequest) {
+        verificationLimiter.acquireClient(httpRequest.getRemoteAddr());
+        verificationUseCases.verify(request.token());
+        return ResponseEntity.ok(new MessageResponse("Correo verificado. Ya puede iniciar sesión."));
+    }
+
+    /** Reenvía el código de verificación. Responde siempre 202 con el mismo mensaje. */
+    @PostMapping("/email/resend")
+    public ResponseEntity<MessageResponse> resendVerification(@Valid @RequestBody ResendVerificationRequest request,
+                                                              HttpServletRequest httpRequest) {
+        verificationLimiter.acquire(httpRequest.getRemoteAddr(), request.email());
+        verificationUseCases.resend(Email.of(request.email()));
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(new MessageResponse(
+                "Si el correo corresponde a una cuenta pendiente de verificar, recibirá un código nuevo."));
+    }
+
     @PostMapping("/login")
-    public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request) {
+    public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request,
+                                               HttpServletRequest httpRequest) {
+        // Intento reservado ANTES de verificar la contraseña (429 si se agotó el cupo del cliente o del email).
+        loginLimiter.acquire(httpRequest.getRemoteAddr(), request.email());
         AuthUseCases.AuthResult result = authUseCases.login(Email.of(request.email()), request.password());
+        loginLimiter.reset(request.email());
         return ResponseEntity.ok(new TokenResponse(
                 result.token(), result.userId().value(), result.role().getCode()));
     }

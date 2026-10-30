@@ -1,4 +1,4 @@
-package nexus.market.adapters.in.rest.security;
+package nexus.market.application;
 
 import java.util.List;
 import java.util.Optional;

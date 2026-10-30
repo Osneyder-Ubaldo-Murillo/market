@@ -1,6 +1,6 @@
 package nexus.market.adapters.in.rest.controllers;
 
-import nexus.market.adapters.in.rest.security.AccessPolicy;
+import nexus.market.application.AccessPolicy;
 import java.util.ArrayList;
 import java.util.List;
 

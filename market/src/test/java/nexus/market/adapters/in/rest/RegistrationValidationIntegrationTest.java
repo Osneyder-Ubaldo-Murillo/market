@@ -155,8 +155,9 @@ class RegistrationValidationIntegrationTest extends RestTestSupport {
         password = "ñ".repeat(35) + "ab";
         assertThat(password.getBytes(java.nio.charset.StandardCharsets.UTF_8)).hasSize(72);
         String email = "exacto-" + uniq() + "@mail.test";
-        send(HttpMethod.POST, "/api/auth/register/buyer", null,
+        String registered = send(HttpMethod.POST, "/api/auth/register/buyer", null,
                 buyerBody(email, "CC-" + uniq(), password, addressJson()), 201);
+        verifyEmail(read(registered, "$.userId")); // sin correo verificado no se puede iniciar sesión
         send(HttpMethod.POST, "/api/auth/login", null, body("email", email, "password", password), 200);
         // Sin truncamiento: cambiar el último carácter ya no autentica.
         send(HttpMethod.POST, "/api/auth/login", null,
