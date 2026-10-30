@@ -52,6 +52,9 @@ public class Cart {
     /**
      * Crea un carrito vacío.
      */
+    /** Máximo de unidades de un mismo producto en el carrito (evita cantidades absurdas y desbordes al sumar). */
+    public static final int MAX_ITEM_QUANTITY = 1000;
+
     public static Cart create(BuyerId buyerId, Currency currency) {
         LocalDateTime now = LocalDateTime.now();
         return new Cart(CartId.generate(), buyerId, currency, List.of(), now, now);
@@ -65,6 +68,7 @@ public class Cart {
         Objects.requireNonNull(item, "item es obligatorio");
         requireCurrency(item);
         CartItem existing = findItem(item.getProductId());
+        requireWithinLimit(item.getQuantity(), existing == null ? 0 : existing.getQuantity().value());
         if (existing == null) {
             items.add(item);
         } else {
@@ -88,6 +92,7 @@ public class Cart {
         if (newQuantity.isZero()) {
             items.remove(existing);
         } else {
+            requireWithinLimit(newQuantity, 0);
             items.set(items.indexOf(existing), existing.withQuantity(newQuantity));
         }
         recalculateTotal();
@@ -111,6 +116,14 @@ public class Cart {
     public void clear() {
         items.clear();
         recalculateTotal();
+    }
+
+    /** {@code alreadyInCart + added} no puede superar el máximo por producto (comparación sin desbordar el entero). */
+    private static void requireWithinLimit(Quantity added, int alreadyInCart) {
+        if ((long) added.value() + alreadyInCart > MAX_ITEM_QUANTITY) {
+            throw new BusinessException("CART_LIMIT_EXCEEDED",
+                    "No se pueden tener más de " + MAX_ITEM_QUANTITY + " unidades de un mismo producto en el carrito.");
+        }
     }
 
     private CartItem findItem(ProductId productId) {

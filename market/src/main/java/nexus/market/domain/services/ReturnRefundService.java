@@ -63,12 +63,16 @@ public class ReturnRefundService {
         }
         Order order = orders.findById(orderId)
                 .orElseThrow(() -> new BusinessException("ORDER_NOT_FOUND", "Pedido inexistente."));
+        if (returns.findByOrderId(orderId).isPresent()) {
+            throw new BusinessException("RETURN_ALREADY_EXISTS", "El pedido ya tiene una devolución solicitada.");
+        }
         for (ReturnItem item : items) {
             if (!eligibility.isSatisfiedBy(order, item)) {
                 throw new BusinessException("RETURN_NOT_ELIGIBLE",
                         "El ítem no es elegible para devolución dentro del plazo vigente.");
             }
         }
+        requireWithinPurchasedQuantities(order, items);
         Return aReturn = returns.save(Return.request(orderId, items));
         audit.record(OperationType.RETURN_REQUEST, AuditSeverity.INFO,
                 order.getBuyerId().toString(), "Devolución solicitada: " + aReturn.getReturnId());
@@ -79,6 +83,26 @@ public class ReturnRefundService {
      * Aprueba la devolución ({@code REQUESTED → APPROVED}) y crea el reembolso
      * {@code PENDING} por el importe de los ítems devueltos.
      */
+    /**
+     * Cada producto devuelto debe estar en el pedido y la suma de lo devuelto (aunque venga en varias líneas) no puede
+     * superar lo comprado: de lo contrario el reembolso excedería lo pagado.
+     */
+    private static void requireWithinPurchasedQuantities(Order order, List<ReturnItem> items) {
+        java.util.Map<nexus.market.domain.valueobjects.ProductId, Integer> requested = new java.util.LinkedHashMap<>();
+        for (ReturnItem item : items) {
+            requested.merge(item.getProductId(), item.getQuantity().value(), Integer::sum);
+        }
+        requested.forEach((productId, quantity) -> {
+            int purchased = order.getItems().stream()
+                    .filter(orderItem -> orderItem.getProductId().equals(productId))
+                    .mapToInt(orderItem -> orderItem.getQuantity().value()).sum();
+            if (purchased == 0 || quantity > purchased) {
+                throw new BusinessException("RETURN_NOT_ELIGIBLE",
+                        "La cantidad a devolver no puede superar la comprada, y el producto debe pertenecer al pedido.");
+            }
+        });
+    }
+
     public Refund approveReturn(ReturnId returnId) {
         Objects.requireNonNull(returnId, "returnId es obligatorio");
         Return aReturn = loadReturn(returnId);
@@ -114,13 +138,10 @@ public class ReturnRefundService {
         Objects.requireNonNull(refundId, "refundId es obligatorio");
         Refund refund = refunds.findById(refundId)
                 .orElseThrow(() -> new BusinessException("REFUND_NOT_FOUND", "Reembolso inexistente."));
+        // El estado se valida ANTES de llamar a la pasarela: un reembolso ya procesado (o fallido) no se devuelve dos veces.
+        refund.requirePending();
         try {
-            PaymentConfirmation confirmation = payments.refund(refund.getOrderId(),
-                    refund.getAmount(), "CHARGE-" + refund.getOrderId());
-            refund.process();
-            refunds.save(refund);
-            audit.record(OperationType.REFUND_PROCESS, AuditSeverity.INFO,
-                    refund.getOrderId().toString(), "Reembolso procesado: " + refundId);
+            payments.refund(refund.getOrderId(), refund.getAmount(), originalTransactionId(refund));
         } catch (RuntimeException ex) {
             refund.fail();
             refunds.save(refund);
@@ -129,6 +150,10 @@ public class ReturnRefundService {
             throw new BusinessException("REFUND_FAILED",
                     "La pasarela no pudo procesar el reembolso " + refundId + ".");
         }
+        refund.process();
+        refunds.save(refund);
+        audit.record(OperationType.REFUND_PROCESS, AuditSeverity.INFO,
+                refund.getOrderId().toString(), "Reembolso procesado: " + refundId);
     }
 
     /** Completa la devolución ({@code APPROVED → PROCESSED}) y repone inventario físico. */
@@ -155,6 +180,12 @@ public class ReturnRefundService {
 
     public Return findById(ReturnId returnId) {
         return loadReturn(returnId);
+    }
+
+    /** Transacción del cobro original (guardada en el pedido); los pedidos anteriores a su registro usan la referencia derivada. */
+    private String originalTransactionId(Refund refund) {
+        return orders.findById(refund.getOrderId()).map(Order::getPaymentTransactionId)
+                .filter(id -> id != null && !id.isBlank()).orElse("CHARGE-" + refund.getOrderId());
     }
 
     private Money refundAmount(Order order, List<ReturnItem> items) {

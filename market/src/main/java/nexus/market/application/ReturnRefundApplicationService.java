@@ -58,6 +58,7 @@ public class ReturnRefundApplicationService implements ReturnRefundUseCases {
     }
 
     @Override
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public void rejectReturn(ReturnId returnId) {
         delegate.rejectReturn(returnId);
     }
@@ -68,7 +69,12 @@ public class ReturnRefundApplicationService implements ReturnRefundUseCases {
         delegate.processReturn(returnId);
     }
 
+    /**
+     * Una sola transacción con la fila del reembolso bloqueada. {@code noRollbackFor}: si la pasarela falla, el
+     * reembolso debe quedar FAILED en la base aunque la API responda error (sin esto el estado se revertiría).
+     */
     @Override
+    @Transactional(isolation = Isolation.READ_COMMITTED, noRollbackFor = BusinessException.class)
     public void processRefund(RefundId refundId) {
         delegate.processRefund(refundId);
     }

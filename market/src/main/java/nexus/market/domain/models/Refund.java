@@ -49,6 +49,11 @@ public class Refund {
     }
 
     /** {@code PENDING → PROCESSED}. */
+    /** Falla (INVALID_STATE_TRANSITION) si el reembolso ya no está PENDING; permite comprobarlo ANTES de llamar a la pasarela. */
+    public void requirePending() {
+        requireStatus(RefundStatus.PENDING);
+    }
+
     public void process() {
         requireStatus(RefundStatus.PENDING);
         this.status = RefundStatus.PROCESSED;

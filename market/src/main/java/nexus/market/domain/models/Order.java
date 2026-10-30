@@ -36,10 +36,20 @@ public class Order {
     private LocalDateTime deliveredAt;
     private final LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    /** Identificador de la transacción de cobro en la pasarela; nulo mientras no se pague (y en pedidos anteriores). */
+    private String paymentTransactionId;
 
     public Order(OrderId orderId, BuyerId buyerId, List<OrderItem> items, OrderStatus status,
                  Address shippingAddress, InvoiceId invoiceId,
                  LocalDateTime deliveredAt, LocalDateTime createdAt, LocalDateTime updatedAt) {
+        this(orderId, buyerId, items, status, shippingAddress, invoiceId, deliveredAt, createdAt, updatedAt, null);
+    }
+
+    public Order(OrderId orderId, BuyerId buyerId, List<OrderItem> items, OrderStatus status,
+                 Address shippingAddress, InvoiceId invoiceId,
+                 LocalDateTime deliveredAt, LocalDateTime createdAt, LocalDateTime updatedAt,
+                 String paymentTransactionId) {
+        this.paymentTransactionId = paymentTransactionId;
         this.orderId = Objects.requireNonNull(orderId, "orderId es obligatorio");
         this.buyerId = Objects.requireNonNull(buyerId, "buyerId es obligatorio");
         if (items == null || items.isEmpty()) {
@@ -111,6 +121,19 @@ public class Order {
         }
         this.status = OrderStatus.CANCELLED;
         touch();
+    }
+
+    /** Guarda el identificador de la transacción de cobro (lo necesitan los reembolsos). */
+    public void recordPaymentTransaction(String transactionId) {
+        if (transactionId == null || transactionId.isBlank()) {
+            throw new IllegalArgumentException("transactionId es obligatorio");
+        }
+        this.paymentTransactionId = transactionId.trim();
+        touch();
+    }
+
+    public String getPaymentTransactionId() {
+        return paymentTransactionId;
     }
 
     public void assignInvoice(InvoiceId invoiceId) {

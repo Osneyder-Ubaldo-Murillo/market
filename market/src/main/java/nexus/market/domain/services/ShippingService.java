@@ -42,6 +42,11 @@ public class ShippingService {
         Objects.requireNonNull(warehouseId, "warehouseId es obligatorio");
         Order order = orders.findById(orderId)
                 .orElseThrow(() -> new BusinessException("ORDER_NOT_FOUND", "Pedido inexistente."));
+        // Un pedido tiene un solo envío: si ya existe (por el otro camino de despacho) se reutiliza, no se duplica.
+        Optional<Shipping> existing = shippings.findByOrderId(orderId);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
         if (order.getStatus() != OrderStatus.PAID) {
             throw new BusinessException("INVALID_STATE_TRANSITION",
                     "Solo se puede crear el envío de un pedido PAID.");
@@ -71,6 +76,11 @@ public class ShippingService {
         }
         shipping.dispatch(effective);
         shippings.save(shipping);
+        if (order.getStatus() == OrderStatus.PAID) {
+            // Despachar el envío por este camino también despacha el pedido (así luego se puede entregar).
+            order.dispatch();
+            orders.save(order);
+        }
         audit.record(OperationType.SHIPPING_UPDATE, AuditSeverity.INFO,
                 order.getBuyerId().toString(), "Envío despachado: " + shippingId);
     }

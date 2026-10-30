@@ -25,7 +25,11 @@ public final class Quantity {
 
     public Quantity add(Quantity other) {
         Objects.requireNonNull(other, "other es obligatorio");
-        return new Quantity(Math.addExact(value, other.value));
+        try {
+            return new Quantity(Math.addExact(value, other.value));
+        } catch (ArithmeticException overflow) {
+            throw new IllegalArgumentException("La cantidad resultante excede el máximo permitido");
+        }
     }
 
     public Quantity subtract(Quantity other) {

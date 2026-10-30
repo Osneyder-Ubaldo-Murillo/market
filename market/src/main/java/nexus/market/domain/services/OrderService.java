@@ -112,6 +112,7 @@ public class OrderService {
         PaymentConfirmation confirmation =
                 payments.charge(orderId, order.getTotal(), paymentMethod);
         order.confirmPayment();
+        order.recordPaymentTransaction(confirmation.getTransactionId());
         orders.save(order);
 
         String reference = orderId.toString();
@@ -158,15 +159,31 @@ public class OrderService {
             throw new OrderNotModifiableException("El pedido no puede modificarse.");
         }
 
+        boolean wasPaid = order.getStatus() == nexus.market.domain.valueobjects.OrderStatus.PAID;
         order.cancel();
         orders.save(order);
-
         if (order.getInvoiceId() != null) {
             invoiceService.cancelInvoice(order.getInvoiceId());
         }
+        if (wasPaid) {
+            // El cliente ya pago: se le devuelve el dinero. Si la pasarela falla, la excepcion revierte TODO (el pedido
+            // sigue PAID y no se repone nada); nunca queda un pedido cancelado y cobrado.
+            try {
+                payments.refund(orderId, order.getTotal(), order.getPaymentTransactionId() != null
+                        ? order.getPaymentTransactionId() : "CHARGE-" + orderId);
+            } catch (RuntimeException ex) {
+                throw new BusinessException("REFUND_FAILED",
+                        "No se pudo reembolsar el pago; el pedido no se canceló.");
+            }
+        }
         for (OrderItem item : inLockOrder(order.getItems(), OrderItem::getProductId)) {
             if (item.getProductType() == ProductType.PHYSICAL) {
-                inventoryService.releaseForProduct(item.getProductId(), item.getQuantity(), orderId.toString());
+                if (wasPaid) {
+                    // La venta ya estaba confirmada (no hay reserva que liberar): las unidades vuelven al inventario.
+                    inventoryService.receiveReturnForProduct(item.getProductId(), item.getQuantity(), orderId.toString());
+                } else {
+                    inventoryService.releaseForProduct(item.getProductId(), item.getQuantity(), orderId.toString());
+                }
             }
         }
         audit.record(OperationType.ORDER_CANCELLATION, AuditSeverity.WARNING,
@@ -184,6 +201,17 @@ public class OrderService {
         java.util.List<T> sorted = new java.util.ArrayList<>(items);
         sorted.sort(java.util.Comparator.comparing(item -> productId.apply(item).value()));
         return sorted;
+    }
+
+    /** Una página de los pedidos del comprador, del más reciente al más antiguo. */
+    public java.util.List<Order> findByBuyer(BuyerId buyerId, int offset, int limit) {
+        Objects.requireNonNull(buyerId, "buyerId es obligatorio");
+        return orders.findByBuyerId(buyerId, offset, limit);
+    }
+
+    public long countByBuyer(BuyerId buyerId) {
+        Objects.requireNonNull(buyerId, "buyerId es obligatorio");
+        return orders.countByBuyerId(buyerId);
     }
 
     public Optional<Order> getOrder(OrderId orderId) {
