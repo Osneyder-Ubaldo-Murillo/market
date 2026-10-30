@@ -37,7 +37,7 @@ Estado verificado contra el código y las pruebas (octubre de 2026). Para el det
 8. El id de transacción del cobro se guarda en el pedido (migración `V3`) y los reembolsos lo usan.
 9. El jar ya no incluye `db/migration`; el Dockerfile tiene `HEALTHCHECK`.
 10. El catálogo público y los pedidos del comprador se listan paginados (antes el catálogo devolvía toda la tabla).
-11. Los reembolsos comprueban su estado antes de llamar a la pasarela, bloquean su fila y conservan `FAILED` si la pasarela falla.
+11. Los reembolsos comprueban su estado antes de llamar a la pasarela, bloquean su fila y conservan `FAILED` si la pasarela falla (y un `FAILED` puede reprocesarse). Si el pago no se completa tras el cobro, se intenta anular el cobro; los pedidos pagados antes de `V3` usan la referencia derivada `CHARGE-<pedido>` (auditada, no es un id real de pasarela).
 
 ## Limitaciones conocidas y pendientes
 

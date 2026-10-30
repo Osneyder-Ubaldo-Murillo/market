@@ -81,7 +81,7 @@ class RefundConsistencyIntegrationTest extends RestTestSupport {
     }
 
     @Test
-    void gatewayFailure_isRecordedAsFailed_andIsNotRetriedAutomatically() throws Exception {
+    void gatewayFailure_isRecordedAsFailed_andCanBeRetriedUntilItSucceeds() throws Exception {
         String refundId = pendingRefund()[1];
         doThrow(new IllegalStateException("pasarela caída")).when(payments).refund(any(), any(), any());
 
@@ -91,6 +91,12 @@ class RefundConsistencyIntegrationTest extends RestTestSupport {
 
         // El estado FAILED sobrevive aunque la respuesta fue un error (no se revierte la transacción).
         assertThat(refunds.findById(RefundId.of(refundId)).orElseThrow().getStatus()).isEqualTo(RefundStatus.FAILED);
+        verify(payments, times(1)).refund(any(), any(), any());
+
+        // Reintento manual cuando la pasarela vuelve: FAILED -> PROCESSED, y ya no se puede repetir.
+        reset(payments);
+        send(HttpMethod.POST, "/api/refunds/" + refundId + "/process", admin, "{}", 200);
+        assertThat(refunds.findById(RefundId.of(refundId)).orElseThrow().getStatus()).isEqualTo(RefundStatus.PROCESSED);
         send(HttpMethod.POST, "/api/refunds/" + refundId + "/process", admin, "{}", 409);
         verify(payments, times(1)).refund(any(), any(), any());
     }

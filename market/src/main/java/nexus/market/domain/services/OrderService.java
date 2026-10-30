@@ -111,21 +111,41 @@ public class OrderService {
         order.requirePendingPayment();
         PaymentConfirmation confirmation =
                 payments.charge(orderId, order.getTotal(), paymentMethod);
-        order.confirmPayment();
-        order.recordPaymentTransaction(confirmation.getTransactionId());
-        orders.save(order);
+        try {
+            order.confirmPayment();
+            order.recordPaymentTransaction(confirmation.getTransactionId());
+            orders.save(order);
 
-        String reference = orderId.toString();
-        for (OrderItem item : inLockOrder(order.getItems(), OrderItem::getProductId)) {
-            if (item.getProductType() == ProductType.PHYSICAL) {
-                inventoryService.confirmSaleForProduct(item.getProductId(), item.getQuantity(), reference);
+            String reference = orderId.toString();
+            for (OrderItem item : inLockOrder(order.getItems(), OrderItem::getProductId)) {
+                if (item.getProductType() == ProductType.PHYSICAL) {
+                    inventoryService.confirmSaleForProduct(item.getProductId(), item.getQuantity(), reference);
+                }
             }
+            invoiceService.generateInvoice(orderId);
+        } catch (RuntimeException ex) {
+            // El rollback de la base de datos no deshace el cobro externo: se intenta anular el cobro para que el cliente
+            // no pague un pedido que queda PENDING_PAYMENT. Si la anulación también falla, queda constancia para conciliar.
+            reverseChargeAfterFailure(order, confirmation);
+            throw ex;
         }
-        invoiceService.generateInvoice(orderId);
 
         audit.record(OperationType.ORDER_PAYMENT, AuditSeverity.INFO,
                 order.getBuyerId().toString(), "Pago confirmado: " + orderId);
         return confirmation;
+    }
+
+    private void reverseChargeAfterFailure(Order order, PaymentConfirmation confirmation) {
+        OrderId orderId = order.getOrderId();
+        try {
+            payments.refund(orderId, order.getTotal(), confirmation.getTransactionId());
+            audit.record(OperationType.REFUND_PROCESS, AuditSeverity.WARNING, order.getBuyerId().toString(),
+                    "Cobro anulado porque el pago del pedido " + orderId + " no pudo completarse");
+        } catch (RuntimeException reversalFailure) {
+            audit.record(OperationType.REFUND_PROCESS, AuditSeverity.ERROR, order.getBuyerId().toString(),
+                    "CONCILIACIÓN: cobro " + confirmation.getTransactionId() + " del pedido " + orderId
+                            + " sin pedido pagado y sin anular (" + reversalFailure.getClass().getSimpleName() + ")");
+        }
     }
 
     /** Despacha el pedido ({@code PAID → DISPATCHED}) creando el envío físico. */
@@ -169,9 +189,14 @@ public class OrderService {
             // El cliente ya pago: se le devuelve el dinero. Si la pasarela falla, la excepcion revierte TODO (el pedido
             // sigue PAID y no se repone nada); nunca queda un pedido cancelado y cobrado.
             try {
-                payments.refund(orderId, order.getTotal(), order.getPaymentTransactionId() != null
-                        ? order.getPaymentTransactionId() : "CHARGE-" + orderId);
+                if (order.hasLegacyChargeReference()) {
+                    audit.record(OperationType.REFUND_PROCESS, AuditSeverity.WARNING, order.getBuyerId().toString(),
+                            "Reembolso con referencia de cobro derivada (pedido sin transacción registrada): " + orderId);
+                }
+                payments.refund(orderId, order.getTotal(), order.chargeReference());
             } catch (RuntimeException ex) {
+                audit.record(OperationType.REFUND_PROCESS, AuditSeverity.ERROR, order.getBuyerId().toString(),
+                        "Reembolso fallido al cancelar el pedido " + orderId + " (" + ex.getClass().getSimpleName() + ")");
                 throw new BusinessException("REFUND_FAILED",
                         "No se pudo reembolsar el pago; el pedido no se canceló.");
             }

@@ -2,6 +2,7 @@ package nexus.market.concurrency;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -194,6 +195,23 @@ class ReturnRefundConcurrencyMySqlTest extends RestTestSupport {
         assertThat(statuses).allMatch(s -> s == 200 || s == 409, "solo 200 o 409: " + statuses);
         verify(payments, times(1)).refund(any(), any(), any());
         assertThat(refunds.findById(RefundId.of(refundId)).orElseThrow().getStatus()).isEqualTo(RefundStatus.PROCESSED);
+    }
+
+    @Test
+    void gatewayFailure_persistsFailedInMySql_andTheRefundCanBeRetried() throws Exception {
+        requestedReturn();
+        String refundId = read(send(HttpMethod.POST, "/api/returns/" + returnId + "/approve", admin, "{}", 200),
+                "$.refundId");
+        reset(payments);
+        doThrow(new IllegalStateException("pasarela caída")).when(payments).refund(any(), any(), any());
+
+        send(HttpMethod.POST, "/api/refunds/" + refundId + "/process", admin, "{}", 400);
+
+        assertThat(refunds.findById(RefundId.of(refundId)).orElseThrow().getStatus()).isEqualTo(RefundStatus.FAILED);
+        reset(payments);
+        send(HttpMethod.POST, "/api/refunds/" + refundId + "/process", admin, "{}", 200);
+        assertThat(refunds.findById(RefundId.of(refundId)).orElseThrow().getStatus()).isEqualTo(RefundStatus.PROCESSED);
+        send(HttpMethod.POST, "/api/refunds/" + refundId + "/process", admin, "{}", 409);
     }
 
     @Test

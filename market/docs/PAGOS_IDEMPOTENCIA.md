@@ -17,13 +17,20 @@ solo escribe en el log.
 
 - **El identificador de transacción del cobro se guarda** en `orders.payment_transaction_id` (migración `V3`).
   `OrderService.confirmPayment` lo registra y lo usan `processRefund` y la cancelación de un pedido pagado. Los pedidos
-  anteriores a `V3` (columna nula) usan la referencia derivada `"CHARGE-" + orderId`, como antes.
+  anteriores a `V3` (columna nula) usan la referencia derivada `"CHARGE-" + orderId` (`Order.chargeReference()`).
+  **Esa referencia no es un id emitido por la pasarela** (el simulador emite `TXN-...`): solo es aceptable con el
+  simulador, que no la valida. Cada uso deja una auditoría `WARNING`, y `PaymentServicePort.refund` documenta que una
+  pasarela real debe localizar el cobro por el pedido cuando recibe el prefijo `CHARGE-`. No hay relleno de datos en `V3`.
 - **Cancelar un pedido pagado** reembolsa el total por la pasarela y repone el stock. Si la pasarela falla, la excepción
-  revierte todo: el pedido sigue `PAID` y no se repone nada.
+  revierte todo: el pedido sigue `PAID` y no se repone nada; el intento fallido queda en la auditoría (`ERROR`).
+- **Pago no completado tras el cobro:** si falla algo después de cobrar (guardar el pedido, inventario, factura), la base
+  se revierte y `OrderService.confirmPayment` intenta anular el cobro con un reembolso. Si esa anulación también falla,
+  se audita un aviso `CONCILIACIÓN` con la transacción para revisarla a mano. Sigue sin ser una garantía (ver abajo).
 - **Pago simulado bloqueado en producción.** Con el perfil `prod` la aplicación no arranca si
   `nexusmarket.payment.simulated.allowed` no es `true` (`LoggingPaymentServicePort`).
 - **Reembolsos:** el estado `PENDING` se comprueba y se bloquea la fila **antes** de llamar a la pasarela, y un fallo de
-  la pasarela deja el reembolso en `FAILED` (no se reintenta solo). Eso evita un doble reembolso desde esta aplicación,
+  la pasarela deja el reembolso en `FAILED` (no se reintenta solo, pero un `FAILED` **puede reprocesarse a mano**; un
+  reembolso `PROCESSED` no). Eso evita un doble reembolso desde esta aplicación,
   pero no resuelve el caso de la sección siguiente (resultado desconocido tras un timeout).
 
 ## Lo que NO se puede afirmar

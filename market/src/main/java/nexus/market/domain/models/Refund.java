@@ -48,21 +48,27 @@ public class Refund {
                 RefundStatus.PENDING, LocalDateTime.now(), null);
     }
 
-    /** {@code PENDING → PROCESSED}. */
-    /** Falla (INVALID_STATE_TRANSITION) si el reembolso ya no está PENDING; permite comprobarlo ANTES de llamar a la pasarela. */
-    public void requirePending() {
-        requireStatus(RefundStatus.PENDING);
+    /**
+     * Falla (INVALID_STATE_TRANSITION) si el reembolso no se puede procesar: solo {@code PENDING} o {@code FAILED}
+     * (reintento tras un fallo de la pasarela). Permite comprobarlo ANTES de llamar a la pasarela.
+     */
+    public void requireProcessable() {
+        if (status != RefundStatus.PENDING && status != RefundStatus.FAILED) {
+            throw new BusinessException("INVALID_STATE_TRANSITION",
+                    "La operación requiere un reembolso en estado PENDING o FAILED");
+        }
     }
 
+    /** {@code PENDING|FAILED → PROCESSED}. */
     public void process() {
-        requireStatus(RefundStatus.PENDING);
+        requireProcessable();
         this.status = RefundStatus.PROCESSED;
         this.processedDate = LocalDateTime.now();
     }
 
-    /** {@code PENDING → FAILED}. */
+    /** {@code PENDING|FAILED → FAILED}. */
     public void fail() {
-        requireStatus(RefundStatus.PENDING);
+        requireProcessable();
         this.status = RefundStatus.FAILED;
         this.processedDate = LocalDateTime.now();
     }

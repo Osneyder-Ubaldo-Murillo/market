@@ -27,7 +27,7 @@ ejecutan con `./mvnw test` (ver la sección de pruebas); el número de pruebas c
 ### Limitaciones conocidas
 
 - El identificador de transacción del cobro se guarda en el pedido (`orders.payment_transaction_id`, migración `V3`) y lo usan
-  los reembolsos; los pedidos anteriores a `V3` usan una referencia derivada. Ver `market/docs/PAGOS_IDEMPOTENCIA.md`.
+  los reembolsos; los pedidos anteriores a `V3` usan una referencia derivada (`CHARGE-<pedido>`, auditada; solo válida con el simulador). Ver `market/docs/PAGOS_IDEMPOTENCIA.md`.
 - Hay dos caminos de despacho (`/api/orders/{id}/dispatch` y `/api/shippings/{id}/...`); ambos dejan pedido y envío coherentes
   (un pedido tiene un solo envío; despachar el envío también despacha el pedido).
 - **Cancelar un pedido ya pagado** reembolsa el pago y repone el stock; si la pasarela falla, no se cancela nada.

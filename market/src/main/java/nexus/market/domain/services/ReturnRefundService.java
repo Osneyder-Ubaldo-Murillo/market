@@ -2,6 +2,7 @@ package nexus.market.domain.services;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 import nexus.market.domain.enums.AuditSeverity;
 import nexus.market.domain.exceptions.BusinessException;
@@ -132,21 +133,21 @@ public class ReturnRefundService {
 
     /**
      * Procesa el reembolso contra la pasarela: {@code PENDING → PROCESSED} o
-     * {@code PENDING → FAILED} si la pasarela no responde.
+     * {@code PENDING → FAILED} si la pasarela no responde. Un reembolso {@code FAILED} puede reintentarse.
      */
     public void processRefund(RefundId refundId) {
         Objects.requireNonNull(refundId, "refundId es obligatorio");
         Refund refund = refunds.findById(refundId)
                 .orElseThrow(() -> new BusinessException("REFUND_NOT_FOUND", "Reembolso inexistente."));
-        // El estado se valida ANTES de llamar a la pasarela: un reembolso ya procesado (o fallido) no se devuelve dos veces.
-        refund.requirePending();
+        // El estado se valida ANTES de llamar a la pasarela: un reembolso ya procesado no se devuelve dos veces.
+        refund.requireProcessable();
         try {
             payments.refund(refund.getOrderId(), refund.getAmount(), originalTransactionId(refund));
         } catch (RuntimeException ex) {
             refund.fail();
             refunds.save(refund);
             audit.record(OperationType.REFUND_PROCESS, AuditSeverity.ERROR,
-                    refund.getOrderId().toString(), "Reembolso fallido: " + refundId);
+                    refund.getOrderId().toString(), "Reembolso fallido: " + refundId + " (" + ex.getClass().getSimpleName() + ")");
             throw new BusinessException("REFUND_FAILED",
                     "La pasarela no pudo procesar el reembolso " + refundId + ".");
         }
@@ -184,8 +185,13 @@ public class ReturnRefundService {
 
     /** Transacción del cobro original (guardada en el pedido); los pedidos anteriores a su registro usan la referencia derivada. */
     private String originalTransactionId(Refund refund) {
-        return orders.findById(refund.getOrderId()).map(Order::getPaymentTransactionId)
-                .filter(id -> id != null && !id.isBlank()).orElse("CHARGE-" + refund.getOrderId());
+        Optional<Order> order = orders.findById(refund.getOrderId());
+        if (order.isPresent() && !order.get().hasLegacyChargeReference()) {
+            return order.get().chargeReference();
+        }
+        audit.record(OperationType.REFUND_PROCESS, AuditSeverity.WARNING, refund.getOrderId().toString(),
+                "Reembolso con referencia de cobro derivada (pedido sin transacción registrada): " + refund.getRefundId());
+        return Order.LEGACY_CHARGE_PREFIX + refund.getOrderId();
     }
 
     private Money refundAmount(Order order, List<ReturnItem> items) {

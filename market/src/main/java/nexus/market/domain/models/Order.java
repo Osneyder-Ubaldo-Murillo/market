@@ -136,6 +136,22 @@ public class Order {
         return paymentTransactionId;
     }
 
+    /** Prefijo de la referencia derivada que se usa solo con pedidos pagados antes de guardarse la transacción real. */
+    public static final String LEGACY_CHARGE_PREFIX = "CHARGE-";
+
+    /** {@code true} si el pedido no guarda la transacción real del cobro (pagado antes de la migración V3). */
+    public boolean hasLegacyChargeReference() {
+        return paymentTransactionId == null || paymentTransactionId.isBlank();
+    }
+
+    /**
+     * Referencia del cobro original para reembolsar: la transacción real de la pasarela o, solo en pedidos antiguos, la
+     * referencia derivada {@code CHARGE-<pedido>} (la pasarela debe resolverla por el pedido; no es un id que ella emitiera).
+     */
+    public String chargeReference() {
+        return hasLegacyChargeReference() ? LEGACY_CHARGE_PREFIX + orderId : paymentTransactionId;
+    }
+
     public void assignInvoice(InvoiceId invoiceId) {
         this.invoiceId = Objects.requireNonNull(invoiceId, "invoiceId es obligatorio");
         touch();

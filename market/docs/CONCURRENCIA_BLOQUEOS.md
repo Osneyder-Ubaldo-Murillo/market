@@ -74,7 +74,7 @@ productos A-B y B-A); **comprobación por mutación**: sin la ordenación por pr
 | `generateInvoice` | pedido | RC |
 | `approveReturn` / `processReturn` | devolución → pedido → inventarios por producto asc. | RC |
 | `rejectReturn` | devolución | RC |
-| `processRefund` | reembolso (estado PENDING comprobado antes de la pasarela; FAILED se conserva si la pasarela falla) | RC, `noRollbackFor` `BusinessException` |
+| `processRefund` | reembolso (estado PENDING o FAILED (reintento) comprobado antes de la pasarela; FAILED se conserva si la pasarela falla) | RC, `noRollbackFor` `BusinessException` |
 | `Inventory.*` (reserve, release, addStock, adjust, markDamaged, markActive) | 1 inventario | RC |
 | `registerBuyer` / `registerSeller` | sin bloqueos de fila | por defecto |
 | Operaciones de una sola escritura sobre catálogo, carrito, bodegas | — | sin transacción |

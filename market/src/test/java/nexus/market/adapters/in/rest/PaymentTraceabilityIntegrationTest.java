@@ -3,6 +3,7 @@ package nexus.market.adapters.in.rest;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -16,9 +17,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.http.HttpMethod;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
+import nexus.market.domain.exceptions.BusinessException;
 import nexus.market.domain.ports.out.OrderRepositoryPort;
 import nexus.market.domain.ports.out.PaymentServicePort;
 import nexus.market.domain.valueobjects.Money;
@@ -34,8 +37,11 @@ class PaymentTraceabilityIntegrationTest extends RestTestSupport {
     @MockitoSpyBean
     private PaymentServicePort payments;
 
-    @Autowired
+    @MockitoSpyBean
     private OrderRepositoryPort orders;
+
+    @Autowired
+    private JdbcTemplate jdbc;
 
     private String admin;
     private SellerCatalog catalog;
@@ -44,6 +50,7 @@ class PaymentTraceabilityIntegrationTest extends RestTestSupport {
     @AfterEach
     void resetSpy() {
         reset(payments);
+        reset(orders);
     }
 
     private String pendingOrder(int quantity) throws Exception {
@@ -111,6 +118,36 @@ class PaymentTraceabilityIntegrationTest extends RestTestSupport {
         verify(payments).refund(eq(OrderId.of(orderId)), amount.capture(), eq(transactionId));
         assertThat(amount.getValue().getAmount()).isEqualByComparingTo("200.00");
         assertThat(stock()).isEqualTo(10);
+    }
+
+    @Test
+    void legacyPaidOrder_withoutStoredTransaction_isRefundedWithTheDerivedReference() throws Exception {
+        String orderId = pendingOrder(1);
+        pay(orderId);
+        jdbc.update("UPDATE orders SET payment_transaction_id = NULL WHERE order_id = ?", orderId);
+        assertThat(orders.findById(OrderId.of(orderId)).orElseThrow().hasLegacyChargeReference()).isTrue();
+        reset(payments);
+
+        send(HttpMethod.POST, "/api/orders/" + orderId + "/cancel", buyer.token(), "{}", 200);
+
+        verify(payments).refund(eq(OrderId.of(orderId)), any(Money.class), eq("CHARGE-" + OrderId.of(orderId)));
+    }
+
+    @Test
+    void ifThePaymentCannotBeCompleted_theChargeIsReversed_andTheOrderStaysPending() throws Exception {
+        String orderId = pendingOrder(1);
+        reset(payments);
+        doThrow(new BusinessException("SAVE_FAILED", "fallo simulado")).when(orders).save(any());
+
+        int status = status(HttpMethod.POST, "/api/orders/" + orderId + "/payment", buyer.token(),
+                body("paymentMethod", "CARD"));
+        reset(orders);
+
+        assertThat(status).isBetween(400, 499);
+        verify(payments).refund(eq(OrderId.of(orderId)), any(Money.class), startsWith("TXN-"));
+        String order = send(HttpMethod.GET, "/api/orders/" + orderId, buyer.token(), null, 200);
+        assertThat((String) JsonPath.read(order, "$.status")).isEqualTo("PENDING_PAYMENT");
+        assertThat(orders.findById(OrderId.of(orderId)).orElseThrow().getPaymentTransactionId()).isNull();
     }
 
     @Test
