@@ -97,7 +97,9 @@ class JpaRefundRepositoryPort extends JpaRepositorySupport implements RefundRepo
 
     @Override
     public Optional<Refund> findById(RefundId refundId) {
-        return find(RefundEntity.class, refundId.value()).map(RefundEntity::toDomain);
+        // Fila bloqueada dentro de una transacción: dos procesamientos del mismo reembolso se serializan y el segundo ve el
+        // estado ya confirmado (ver docs/CONCURRENCIA_BLOQUEOS.md).
+        return findForUpdate(RefundEntity.class, refundId.value()).map(RefundEntity::toDomain);
     }
 
     @Override

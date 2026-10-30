@@ -120,6 +120,21 @@ class JpaInvoiceRepositoryPort extends JpaRepositorySupport implements InvoiceRe
     }
 
     @Override
+    public java.util.List<Invoice> findByBuyerId(nexus.market.domain.valueobjects.BuyerId buyerId, int offset,
+                                                 int limit) {
+        return queryPage(InvoiceEntity.class,
+                "select i from InvoiceEntity i where i.buyerId = :buyerId order by i.issueDate desc, i.invoiceId",
+                Map.of("buyerId", buyerId.value()), offset, limit)
+                .stream().map(InvoiceEntity::toDomain).collect(java.util.stream.Collectors.toList());
+    }
+
+    @Override
+    public long countByBuyerId(nexus.market.domain.valueobjects.BuyerId buyerId) {
+        return count("select count(i) from InvoiceEntity i where i.buyerId = :buyerId",
+                Map.of("buyerId", buyerId.value()));
+    }
+
+    @Override
     public Optional<Invoice> findByOrderId(OrderId orderId) {
         return querySingle(InvoiceEntity.class,
                 "select i from InvoiceEntity i where i.orderId = :orderId",

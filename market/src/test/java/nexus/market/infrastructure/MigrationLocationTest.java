@@ -38,21 +38,28 @@ class MigrationLocationTest {
     @Test
     void activeLocation_hasNoSeedsOrUsers() throws IOException {
         Resource[] scripts = new PathMatchingResourcePatternResolver().getResources("classpath:db/schema/*.sql");
-        assertThat(scripts).extracting(Resource::getFilename).containsExactly("V1__initial_schema.sql");
+        assertThat(scripts).extracting(Resource::getFilename).containsExactlyInAnyOrder("V1__initial_schema.sql", "V2__user_email_verification.sql",
+                "V3__order_payment_transaction.sql");
         for (Resource script : scripts) {
             String sql = new String(script.getInputStream().readAllBytes(), StandardCharsets.UTF_8).toUpperCase();
             assertThat(sql).doesNotContain("INSERT ").doesNotContain("$2A$").doesNotContain("PASSWORD123");
-            assertThat(sql).contains("CREATE TABLE `USER_CREDENTIALS`").contains("CREATE TABLE `INVENTORIES`");
+            assertThat(sql).doesNotContain("DROP ").doesNotContain("DELETE ").doesNotContain("TRUNCATE");
         }
+        String v1 = new String(new ClassPathResource("db/schema/V1__initial_schema.sql").getInputStream().readAllBytes(),
+                StandardCharsets.UTF_8).toUpperCase();
+        assertThat(v1).contains("CREATE TABLE `USER_CREDENTIALS`").contains("CREATE TABLE `INVENTORIES`");
     }
 
     @Test
     void activeMigrations_createNoAdministratorAndNoCredentials() throws IOException {
         Resource[] scripts = new PathMatchingResourcePatternResolver().getResources("classpath:db/schema/*");
-        assertThat(scripts).hasSize(1);
-        String sql = new String(scripts[0].getInputStream().readAllBytes(), StandardCharsets.UTF_8).toUpperCase();
-        // Solo definiciones de tablas: ni filas, ni el rol ADMIN como dato, ni hashes ni contraseñas.
-        assertThat(sql).doesNotContain("INSERT").doesNotContain("'ADMIN'").doesNotContain("ADMIN@")
-                .doesNotContain("BCRYPT").doesNotContain("$2");
+        assertThat(scripts).hasSize(3);
+        for (Resource script : scripts) {
+            String sql = new String(script.getInputStream().readAllBytes(), StandardCharsets.UTF_8).toUpperCase();
+            // Solo definiciones de tablas/columnas (y el UPDATE de V2 sobre fechas): ni filas, ni el rol ADMIN como dato,
+            // ni hashes ni contraseñas.
+            assertThat(sql).doesNotContain("INSERT").doesNotContain("'ADMIN'").doesNotContain("ADMIN@")
+                    .doesNotContain("BCRYPT").doesNotContain("$2");
+        }
     }
 }

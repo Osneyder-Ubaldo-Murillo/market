@@ -127,10 +127,11 @@ class JpaInitialAdminStore extends JpaRepositorySupport implements InitialAdminS
         String text120 = mysql ? "CHAR(120)" : "VARCHAR(120)";
         String text30 = mysql ? "CHAR(30)" : "VARCHAR(30)";
         String timestamp = mysql ? "DATETIME(6)" : "TIMESTAMP(6)";
-        return "insert into users (id, created_at, document_id, email, full_name, role, status, updated_at) "
+        return "insert into users (id, created_at, document_id, email, full_name, role, status, updated_at, "
+                + "email_verified_at) "
                 + "select cast(?1 as " + text36 + "), cast(?2 as " + timestamp + "), cast(?3 as " + text40 + "), "
                 + "cast(?4 as " + text160 + "), cast(?5 as " + text120 + "), cast(?6 as " + text30 + "), "
-                + "cast(?7 as " + text30 + "), cast(?8 as " + timestamp + ") "
+                + "cast(?7 as " + text30 + "), cast(?8 as " + timestamp + "), cast(?2 as " + timestamp + ") "
                 + "from (select 1 as one) src "
                 + "where not exists (select 1 from users where role = ?9)";
     }

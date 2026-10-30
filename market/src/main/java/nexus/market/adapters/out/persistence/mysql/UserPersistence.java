@@ -54,6 +54,10 @@ class UserEntity {
     @Column(name = "updated_at", nullable = false)
     LocalDateTime updatedAt;
 
+    /** Fecha de verificación del correo; nulo mientras no esté verificado. */
+    @Column(name = "email_verified_at")
+    LocalDateTime emailVerifiedAt;
+
     protected UserEntity() {
     }
 
@@ -67,6 +71,7 @@ class UserEntity {
         entity.status = user.getStatus().getCode();
         entity.createdAt = user.getCreatedAt();
         entity.updatedAt = user.getUpdatedAt();
+        entity.emailVerifiedAt = user.getEmailVerifiedAt();
         return entity;
     }
 
@@ -74,7 +79,7 @@ class UserEntity {
         JpaCatalogCodecs catalogs = JpaCatalogCodecs.INSTANCE;
         return new User(UserId.of(id), FullName.of(fullName), Email.of(email),
                 DocumentId.of(documentId), catalogs.systemRole(role),
-                catalogs.userStatus(status), createdAt, updatedAt);
+                catalogs.userStatus(status), createdAt, updatedAt, emailVerifiedAt);
     }
 }
 /**

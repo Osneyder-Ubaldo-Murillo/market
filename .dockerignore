@@ -6,3 +6,5 @@
 .env
 *.pdf
 SDD
+# Migraciones antiguas sin versionar (V1 invalido, V2 con cuentas de contrasena conocida): nunca en la imagen
+market/src/main/resources/db/migration

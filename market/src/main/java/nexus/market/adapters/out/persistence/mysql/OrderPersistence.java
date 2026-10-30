@@ -69,6 +69,9 @@ class OrderEntity {
     @Column(name = "delivered_at")
     LocalDateTime deliveredAt;
 
+    @Column(name = "payment_transaction_id", length = 64)
+    String paymentTransactionId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     LocalDateTime createdAt;
 
@@ -91,6 +94,7 @@ class OrderEntity {
         entity.shippingAddress = JpaValueTypes.AddressValue.from(order.getShippingAddress());
         entity.invoiceId = order.getInvoiceId() == null ? null : order.getInvoiceId().value();
         entity.deliveredAt = order.getDeliveredAt();
+        entity.paymentTransactionId = order.getPaymentTransactionId();
         entity.createdAt = order.getCreatedAt();
         entity.updatedAt = order.getUpdatedAt();
         return entity;
@@ -104,7 +108,7 @@ class OrderEntity {
         InvoiceId invoice = invoiceId == null ? null : InvoiceId.of(invoiceId);
         return new Order(OrderId.of(orderId), BuyerId.of(buyerId), domainItems,
                 JpaCatalogCodecs.INSTANCE.orderStatus(status), address, invoice,
-                deliveredAt, createdAt, updatedAt);
+                deliveredAt, createdAt, updatedAt, paymentTransactionId);
     }
 }
 
@@ -129,6 +133,20 @@ class JpaOrderRepositoryPort extends JpaRepositorySupport implements OrderReposi
         // Fila bloqueada dentro de una transacción (primer bloqueo del orden global; ver
         // docs/CONCURRENCIA_BLOQUEOS.md): dos operaciones sobre el mismo pedido se serializan.
         return findForUpdate(OrderEntity.class, orderId.value()).map(OrderEntity::toDomain);
+    }
+
+    @Override
+    public List<Order> findByBuyerId(BuyerId buyerId, int offset, int limit) {
+        return queryPage(OrderEntity.class,
+                "select o from OrderEntity o where o.buyerId = :buyerId order by o.createdAt desc, o.orderId",
+                Map.of("buyerId", buyerId.value()), offset, limit)
+                .stream().map(OrderEntity::toDomain).collect(Collectors.toList());
+    }
+
+    @Override
+    public long countByBuyerId(BuyerId buyerId) {
+        return count("select count(o) from OrderEntity o where o.buyerId = :buyerId",
+                Map.of("buyerId", buyerId.value()));
     }
 
     @Override

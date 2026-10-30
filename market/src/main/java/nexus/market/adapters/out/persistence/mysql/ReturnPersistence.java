@@ -98,7 +98,9 @@ class JpaReturnRepositoryPort extends JpaRepositorySupport implements ReturnRepo
 
     @Override
     public Optional<Return> findById(ReturnId returnId) {
-        return find(ReturnEntity.class, returnId.value()).map(ReturnEntity::toDomain);
+        // Fila bloqueada dentro de una transacción: aprobar, rechazar y procesar una devolución se serializan por su fila
+        // (orden de bloqueo: devolución y después pedido; ver docs/CONCURRENCIA_BLOQUEOS.md).
+        return findForUpdate(ReturnEntity.class, returnId.value()).map(ReturnEntity::toDomain);
     }
 
     @Override

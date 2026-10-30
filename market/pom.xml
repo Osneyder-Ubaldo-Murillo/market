@@ -119,6 +119,17 @@
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
 			<plugin>
+				<!-- db/migration contiene un V1 invalido y un V2 con cuentas de contrasena conocida (sin versionar, ver
+				     docs/migrations/): nunca debe ir dentro del jar. Flyway usa solo classpath:db/schema. -->
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-jar-plugin</artifactId>
+				<configuration>
+					<excludes>
+						<exclude>db/migration/**</exclude>
+					</excludes>
+				</configuration>
+			</plugin>
+			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
 				<executions>

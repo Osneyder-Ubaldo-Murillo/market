@@ -132,11 +132,39 @@ abstract class JpaRepositorySupport {
     }
 
     private static <T> List<T> run(EntityManager em, Class<T> type, String jpql, Map<String, Object> params) {
+        return run(em, type, jpql, params, 0, Integer.MAX_VALUE);
+    }
+
+    private static <T> List<T> run(EntityManager em, Class<T> type, String jpql, Map<String, Object> params,
+                                   int offset, int limit) {
         TypedQuery<T> query = em.createQuery(jpql, type);
         if (params != null) {
             params.forEach(query::setParameter);
         }
+        if (limit != Integer.MAX_VALUE) {
+            query.setFirstResult(offset);
+            query.setMaxResults(limit);
+        }
         return query.getResultList();
+    }
+
+    /** Una página de resultados ({@code offset} y {@code limit} en filas). La JPQL debe incluir un orden estable. */
+    protected <T> List<T> queryPage(Class<T> type, String jpql, Map<String, Object> params, int offset, int limit) {
+        EntityManager shared = transactionalEntityManager();
+        if (shared != null) {
+            return run(shared, type, jpql, params, offset, limit);
+        }
+        EntityManager em = entityManagerFactory.createEntityManager();
+        try {
+            return run(em, type, jpql, params, offset, limit);
+        } finally {
+            em.close();
+        }
+    }
+
+    /** Ejecuta una JPQL {@code select count(...)} y devuelve el número. */
+    protected long count(String jpql, Map<String, Object> params) {
+        return querySingle(Long.class, jpql, params).orElse(0L);
     }
 
     /** Ejecuta una JPQL y devuelve el primer resultado, si existe. */

@@ -21,13 +21,14 @@ import nexus.market.domain.valueobjects.OperationType;
 /**
  * Adaptador de salida {@link AuditLogRepositoryPort} sobre MongoDB.
  *
- * <p>Se activa con el perfil {@code mongodb} (ver {@code application-jpa.properties}:
+ * <p>Se activa con el perfil {@code mongodb} o con {@code prod} (el despliegue Docker usa {@code jpa,prod}, así que la
+ * auditoría llega a MongoDB sin un perfil adicional; ver {@code application-jpa.properties}:
  * {@code spring.data.mongodb.uri}). El registro es <strong>no transaccional</strong>
  * respecto a las escrituras principales: un fallo de auditoría se registra en el
  * log de la aplicación pero nunca propaga la excepción (regla 5 de la SDD).</p>
  */
 @Component
-@Profile("mongodb")
+@Profile({ "mongodb", "prod" })
 public class MongoAuditLogRepositoryPort implements AuditLogRepositoryPort {
 
     private static final Logger log = LoggerFactory.getLogger(MongoAuditLogRepositoryPort.class);
@@ -58,7 +59,9 @@ public class MongoAuditLogRepositoryPort implements AuditLogRepositoryPort {
             mongoClient.getDatabase(database).getCollection(COLLECTION).insertOne(document);
         } catch (RuntimeException ex) {
             // La auditoría nunca debe romper la operación de negocio.
-            log.warn("No se pudo registrar la auditoría ({}): {}", operation.getCode(), ex.getMessage());
+            // Se conserva el registro en el log para no perderlo si MongoDB no responde.
+            log.warn("No se pudo registrar la auditoría en MongoDB ({}); se conserva en el log: {} | {} | actor={} | {}",
+                    ex.getClass().getSimpleName(), operation.getCode(), severity, actorId, description);
         }
     }
 

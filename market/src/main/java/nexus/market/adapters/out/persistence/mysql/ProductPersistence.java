@@ -136,6 +136,37 @@ class JpaProductRepositoryPort extends JpaRepositorySupport implements ProductRe
     }
 
     @Override
+    public List<Product> findPublished(String nameContains, int offset, int limit) {
+        return queryPage(ProductEntity.class,
+                "select p from ProductEntity p where p.status = :status" + nameFilter(nameContains)
+                        + " order by p.name, p.productId",
+                publishedParams(nameContains), offset, limit)
+                .stream().map(ProductEntity::toDomain).collect(Collectors.toList());
+    }
+
+    @Override
+    public long countPublished(String nameContains) {
+        return count("select count(p) from ProductEntity p where p.status = :status" + nameFilter(nameContains),
+                publishedParams(nameContains));
+    }
+
+    private static String nameFilter(String nameContains) {
+        return nameContains == null ? "" : " and lower(p.name) like :pattern escape '!'";
+    }
+
+    private static Map<String, Object> publishedParams(String nameContains) {
+        Map<String, Object> params = new java.util.HashMap<>();
+        params.put("status", ProductStatus.ACTIVE.getCode());
+        if (nameContains != null) {
+            // El texto del usuario es un valor literal: se escapan los comodines de LIKE (! % _) y va como parámetro.
+            String escaped = nameContains.toLowerCase(java.util.Locale.ROOT)
+                    .replace("!", "!!").replace("%", "!%").replace("_", "!_");
+            params.put("pattern", "%" + escaped + "%");
+        }
+        return params;
+    }
+
+    @Override
     public List<Product> findPublished() {
         return query(ProductEntity.class,
                 "select p from ProductEntity p where p.status = :status",

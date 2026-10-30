@@ -23,7 +23,7 @@ import nexus.market.domain.valueobjects.OperationType;
  * {@code adapters.out.persistence.mongodb.MongoAuditLogRepositoryPort}).</p>
  */
 @Component
-@Profile("!mongodb")
+@Profile("!mongodb & !prod")
 public class LoggingAuditLogRepositoryPort implements AuditLogRepositoryPort {
 
     private static final Logger log = LoggerFactory.getLogger(LoggingAuditLogRepositoryPort.class);
