@@ -28,7 +28,15 @@ public interface AuthUseCases {
      * Autentica al usuario: verifica la contraseña, exige estado
      * {@code ACTIVE} y devuelve un token JWT firmado.
      */
-    AuthResult login(Email email, String rawPassword);
+    default AuthResult login(Email email, String rawPassword) {
+        return login(email, rawPassword, null);
+    }
+
+    /**
+     * Igual que {@link #login(Email, String)} indicando el origen de la petición (dirección del cliente). El origen solo
+     * se usa para decidir si una cuenta debe bloquearse: ver {@code LoginLockout}.
+     */
+    AuthResult login(Email email, String rawPassword, String clientAddress);
 
     /** Resultado del login: token JWT, usuario autenticado y su rol. */
     record AuthResult(String token, nexus.market.domain.valueobjects.UserId userId,

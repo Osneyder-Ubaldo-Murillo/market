@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import nexus.market.domain.enums.AuditSeverity;
 import nexus.market.domain.exceptions.BusinessException;
 import nexus.market.domain.models.Buyer;
 import nexus.market.domain.models.Seller;
@@ -16,12 +17,14 @@ import nexus.market.domain.ports.in.AuthUseCases;
 import nexus.market.domain.ports.out.JwtServicePort;
 import nexus.market.domain.ports.out.PasswordServicePort;
 import nexus.market.domain.ports.out.UserRepositoryPort;
+import nexus.market.domain.services.AuditService;
 import nexus.market.domain.services.UserManagementService;
 import nexus.market.domain.valueobjects.Address;
 import nexus.market.domain.valueobjects.BusinessName;
 import nexus.market.domain.valueobjects.DocumentId;
 import nexus.market.domain.valueobjects.Email;
 import nexus.market.domain.valueobjects.FullName;
+import nexus.market.domain.valueobjects.OperationType;
 import nexus.market.domain.valueobjects.TaxId;
 import nexus.market.domain.valueobjects.UserStatus;
 
@@ -46,6 +49,7 @@ public class AuthApplicationService implements AuthUseCases {
     private final JwtServicePort jwtService;
     private final EmailVerificationUseCases emailVerification;
     private final LoginLockout lockout;
+    private final AuditService audit;
     private volatile String dummyHash;
 
     public AuthApplicationService(UserManagementService userManagement,
@@ -54,7 +58,9 @@ public class AuthApplicationService implements AuthUseCases {
                                   PasswordServicePort passwordService,
                                   JwtServicePort jwtService,
                                   EmailVerificationUseCases emailVerification,
-                                  LoginLockout lockout) {
+                                  LoginLockout lockout,
+                                  AuditService audit) {
+        this.audit = Objects.requireNonNull(audit, "audit es obligatorio");
         this.userManagement = Objects.requireNonNull(userManagement, "userManagement es obligatorio");
         this.users = Objects.requireNonNull(users, "users es obligatorio");
         this.credentials = Objects.requireNonNull(credentials, "credentials es obligatorio");
@@ -90,7 +96,7 @@ public class AuthApplicationService implements AuthUseCases {
     }
 
     @Override
-    public AuthResult login(Email email, String rawPassword) {
+    public AuthResult login(Email email, String rawPassword, String clientAddress) {
         Objects.requireNonNull(email, "email es obligatorio");
         User user = users.findByEmail(email).orElse(null);
         String storedHash = user == null ? null : credentials.findByUserId(user.getUserId()).orElse(null);
@@ -101,7 +107,7 @@ public class AuthApplicationService implements AuthUseCases {
             throw invalidCredentials();
         }
         if (!passwordService.verify(requirePassword(rawPassword), storedHash)) {
-            blockAfterRepeatedFailures(user, email);
+            registerFailedLogin(user, email, clientAddress);
             throw invalidCredentials();
         }
         lockout.reset(email.getValue());
@@ -119,17 +125,22 @@ public class AuthApplicationService implements AuthUseCases {
     }
 
     /**
-     * Cuenta el fallo y, al llegar al tope (3 por defecto), bloquea la cuenta: solo un ADMIN puede reactivarla. El ADMIN
-     * nunca se bloquea por este camino (nadie podría desbloquearlo) y una cuenta que no está ACTIVE no se cuenta. La
+     * Audita el fallo (solo cuentas existentes; el actor es el id, nunca el email ni la contraseña) y lo cuenta: al llegar
+     * al tope (3 por defecto) desde varios orígenes distintos, bloquea la cuenta y solo un ADMIN puede reactivarla. El
+     * ADMIN nunca se bloquea por este camino (nadie podría desbloquearlo) y una cuenta que no está ACTIVE no se cuenta. La
      * respuesta del intento que bloquea es la misma que la de cualquier credencial incorrecta.
      */
-    private void blockAfterRepeatedFailures(User user, Email email) {
+    private void registerFailedLogin(User user, Email email, String clientAddress) {
+        audit.record(OperationType.LOGIN_FAILED, AuditSeverity.WARNING, user.getUserId().value(),
+                "Inicio de sesión fallido");
         if (user.getStatus() != UserStatus.ACTIVE || user.getRole() == SystemRole.ADMIN) {
             return;
         }
-        if (lockout.registerFailure(email.getValue())) {
+        if (lockout.registerFailure(email.getValue(), clientAddress)) {
             try {
                 userManagement.blockUser(user.getUserId());
+                audit.record(OperationType.ACCOUNT_LOCKED, AuditSeverity.WARNING, user.getUserId().value(),
+                        "Cuenta bloqueada por intentos fallidos desde varios orígenes");
             } catch (BusinessException alreadyBlocked) {
                 // otro intento simultáneo ya la bloqueó
             }

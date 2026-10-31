@@ -47,6 +47,7 @@ import nexus.market.domain.valueobjects.SystemRole;
         // El límite de login se prueba en LoginRateLimitIntegrationTest con su propia configuración.
         "nexusmarket.login.max-per-client=100000",
         "nexusmarket.login.max-per-email=100000",
+        "nexusmarket.login.max-per-client-and-email=100000",
         "nexusmarket.registration.max-per-client=100000",
         "nexusmarket.registration.max-per-email=100000",
         "nexusmarket.recovery.max-per-client=100000",
@@ -129,7 +130,19 @@ public abstract class RestTestSupport {
     // ------------------------------------------------------------------
 
     protected MvcResult perform(HttpMethod method, String path, String token, String json) throws Exception {
+        return performFrom(null, method, path, token, json);
+    }
+
+    /** Igual que {@link #perform} pero con otra dirección de cliente ({@code null}: la de MockMvc por defecto). */
+    protected MvcResult performFrom(String remoteAddress, HttpMethod method, String path, String token, String json)
+            throws Exception {
         MockHttpServletRequestBuilder builder = request(method, path);
+        if (remoteAddress != null) {
+            builder.with(request -> {
+                request.setRemoteAddr(remoteAddress);
+                return request;
+            });
+        }
         if (token != null) {
             builder.header("Authorization", "Bearer " + token);
         }

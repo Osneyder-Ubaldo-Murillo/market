@@ -40,9 +40,11 @@ ejecutan con `./mvnw test` (ver la sección de pruebas); el número de pruebas c
 - Recuperación de contraseña (`POST /api/auth/password/forgot` y `/reset`): el código es un JWT de 30 minutos y un solo uso,
   entregado por `NotificationPort`. **Con el adaptador de log, el código queda escrito en el log**; sustitúyalo por un canal
   real antes de usar la aplicación con usuarios reales. No aplica al ADMIN (ver `market/docs/ROTACION_Y_RECUPERACION_ADMIN.md`).
-- **Bloqueo por intentos fallidos:** 3 inicios de sesión fallidos consecutivos bloquean la cuenta (`BLOCKED`); solo un ADMIN la reactiva
-  (`PATCH /api/users/{id}/activate`). El ADMIN no se bloquea por este camino. Quien conoce un email puede bloquear esa cuenta
-  fallando a propósito (riesgo asumido; el límite por IP lo frena).
+- **Bloqueo por intentos fallidos:** 3 inicios de sesión fallidos consecutivos **desde al menos 2 orígenes (IP) distintos** bloquean
+  la cuenta (`BLOCKED`); solo un ADMIN la reactiva (`PATCH /api/users/{id}/activate`), sin desbloqueo automático. Un solo origen
+  nunca la bloquea: se le corta con 429 tras 3 intentos por cuenta y ventana de 15 min. El ADMIN no se bloquea. Las respuestas son
+  genéricas y la auditoría registra `LOGIN_FAILED` y `ACCOUNT_LOCKED` (solo cuentas existentes, sin email ni contraseña). Riesgo
+  residual: quien controle varias IP puede seguir bloqueando una cuenta ajena.
 - **Verificación de correo:** las cuentas de registro público (comprador y vendedor) no pueden iniciar sesión hasta verificar el
   correo (`POST /api/auth/email/verify`; reenvío en `/api/auth/email/resend`). Requiere la migración `V2` (`users.email_verified_at`);
   los usuarios existentes quedan verificados. Igual que la recuperación, el código se escribe en el log con el adaptador actual.

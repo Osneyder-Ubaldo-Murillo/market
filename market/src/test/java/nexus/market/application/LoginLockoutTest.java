@@ -45,40 +45,61 @@ class LoginLockoutTest {
         }
     };
 
+    private static final String A = "10.0.0.1";
+    private static final String B = "10.0.0.2";
+
     @Test
-    void thirdConsecutiveFailure_reachesTheLimit_andTheCountRestarts() {
-        LoginLockout lockout = new LoginLockout(clock, 3);
-        assertThat(lockout.registerFailure("ana@example.com")).isFalse();
-        assertThat(lockout.registerFailure("ana@example.com")).isFalse();
-        assertThat(lockout.registerFailure("ana@example.com")).isTrue();
-        // Tras bloquear, el conteo vuelve a cero (si un ADMIN la reactiva, tiene 3 intentos nuevos).
-        assertThat(lockout.registerFailure("ana@example.com")).isFalse();
+    void thirdConsecutiveFailureFromTwoOrigins_reachesTheLimit_andTheCountRestarts() {
+        LoginLockout lockout = new LoginLockout(clock, 3, 2);
+        assertThat(lockout.registerFailure("ana@example.com", A)).isFalse();
+        assertThat(lockout.registerFailure("ana@example.com", A)).isFalse();
+        assertThat(lockout.registerFailure("ana@example.com", B)).isTrue();
+        // Tras bloquear, el conteo vuelve a cero (si un ADMIN la reactiva, tiene intentos nuevos).
+        assertThat(lockout.registerFailure("ana@example.com", A)).isFalse();
+    }
+
+    @Test
+    void aSingleOrigin_neverLocksAnAccount_howeverManyFailuresItAccumulates() {
+        LoginLockout lockout = new LoginLockout(clock, 3, 2);
+        for (int i = 0; i < 50; i++) {
+            assertThat(lockout.registerFailure("ana@example.com", A)).as("fallo %d", i).isFalse();
+        }
+        // En cuanto falla otro origen, el conteo acumulado ya supera el tope: se bloquea.
+        assertThat(lockout.registerFailure("ana@example.com", B)).isTrue();
+    }
+
+    @Test
+    void theMinimumOfOriginsIsConfigurable() {
+        LoginLockout oneOrigin = new LoginLockout(clock, 3, 1);
+        oneOrigin.registerFailure("ana@example.com", A);
+        oneOrigin.registerFailure("ana@example.com", A);
+        assertThat(oneOrigin.registerFailure("ana@example.com", A)).isTrue();
     }
 
     @Test
     void successfulLogin_resetsTheCount_andAccountsAreIndependent() {
-        LoginLockout lockout = new LoginLockout(clock, 3);
-        lockout.registerFailure("ana@example.com");
-        lockout.registerFailure("ana@example.com");
+        LoginLockout lockout = new LoginLockout(clock, 3, 2);
+        lockout.registerFailure("ana@example.com", A);
+        lockout.registerFailure("ana@example.com", B);
         lockout.reset("ANA@example.com "); // misma cuenta: sin distinguir mayúsculas ni espacios
-        assertThat(lockout.registerFailure("ana@example.com")).isFalse();
-        assertThat(lockout.registerFailure("otra@example.com")).isFalse();
-        assertThat(lockout.registerFailure("otra@example.com")).isFalse();
-        assertThat(lockout.registerFailure("otra@example.com")).isTrue();
+        assertThat(lockout.registerFailure("ana@example.com", A)).isFalse();
+        assertThat(lockout.registerFailure("otra@example.com", A)).isFalse();
+        assertThat(lockout.registerFailure("otra@example.com", B)).isFalse();
+        assertThat(lockout.registerFailure("otra@example.com", A)).isTrue();
     }
 
     @Test
     void failuresFarApart_doNotAccumulate() {
-        LoginLockout lockout = new LoginLockout(clock, 3);
-        lockout.registerFailure("ana@example.com");
-        lockout.registerFailure("ana@example.com");
+        LoginLockout lockout = new LoginLockout(clock, 3, 2);
+        lockout.registerFailure("ana@example.com", A);
+        lockout.registerFailure("ana@example.com", B);
         now.set(now.get().plus(Duration.ofMinutes(LoginLockout.WINDOW_MINUTES)));
-        assertThat(lockout.registerFailure("ana@example.com")).isFalse(); // ventana nueva
+        assertThat(lockout.registerFailure("ana@example.com", A)).isFalse(); // ventana nueva
     }
 
     @Test
     void concurrentFailures_reachTheLimitExactlyOnce() throws Exception {
-        LoginLockout lockout = new LoginLockout(clock, 3);
+        LoginLockout lockout = new LoginLockout(clock, 3, 2);
         int threads = 3;
         ExecutorService pool = Executors.newFixedThreadPool(threads);
         CountDownLatch start = new CountDownLatch(1);
@@ -86,9 +107,10 @@ class LoginLockoutTest {
         try {
             java.util.List<Future<?>> futures = new java.util.ArrayList<>();
             for (int i = 0; i < threads; i++) {
+                String origin = "10.0.0." + i;
                 futures.add(pool.submit(() -> {
                     start.await();
-                    if (lockout.registerFailure("ana@example.com")) {
+                    if (lockout.registerFailure("ana@example.com", origin)) {
                         reached.incrementAndGet();
                     }
                     return null;
@@ -106,7 +128,8 @@ class LoginLockoutTest {
 
     @Test
     void invalidLimit_isRejected() {
-        assertThatThrownBy(() -> new LoginLockout(clock, 0)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new LoginLockout(clock, 0, 2)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new LoginLockout(clock, 3, 0)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

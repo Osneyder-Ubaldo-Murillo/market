@@ -44,7 +44,8 @@ class LoginEnumerationTest {
     @BeforeEach
     void setUp() {
         service = new AuthApplicationService(mock(UserManagementService.class), users, credentials, passwords, jwt,
-                mock(nexus.market.domain.ports.in.EmailVerificationUseCases.class), new LoginLockout(3));
+                mock(nexus.market.domain.ports.in.EmailVerificationUseCases.class), new LoginLockout(3, 2),
+                mock(nexus.market.domain.services.AuditService.class));
         when(passwords.hash(anyString())).thenReturn("$2a$10$hashficticiohashficticiohashficticiohashficticiohashfict");
     }
 

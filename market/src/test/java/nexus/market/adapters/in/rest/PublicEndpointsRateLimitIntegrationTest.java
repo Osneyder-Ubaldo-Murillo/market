@@ -28,6 +28,7 @@ import org.springframework.test.web.servlet.MvcResult;
         "spring.data.mongodb.database=test_audit",
         "nexusmarket.login.max-per-client=100000",
         "nexusmarket.login.max-per-email=100000",
+        "nexusmarket.login.max-per-client-and-email=100000",
         "nexusmarket.registration.max-per-email=2",
         "nexusmarket.registration.max-per-client=1000",
         "nexusmarket.recovery.max-per-email=2",

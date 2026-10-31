@@ -162,8 +162,9 @@ public class AuthController {
                                                HttpServletRequest httpRequest) {
         // Intento reservado ANTES de verificar la contraseña (429 si se agotó el cupo del cliente o del email).
         loginLimiter.acquire(httpRequest.getRemoteAddr(), request.email());
-        AuthUseCases.AuthResult result = authUseCases.login(Email.of(request.email()), request.password());
-        loginLimiter.reset(request.email());
+        AuthUseCases.AuthResult result = authUseCases.login(Email.of(request.email()), request.password(),
+                httpRequest.getRemoteAddr());
+        loginLimiter.reset(httpRequest.getRemoteAddr(), request.email());
         return ResponseEntity.ok(new TokenResponse(
                 result.token(), result.userId().value(), result.role().getCode()));
     }

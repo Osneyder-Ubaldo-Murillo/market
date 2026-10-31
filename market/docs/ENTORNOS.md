@@ -37,8 +37,10 @@ El login tiene límite de intentos (por defecto 10 por email y 50 por cliente ca
 (`nexusmarket.recovery.max-per-*`, 3 y 20) tienen cupos propios. Todos responden 429 con `Retry-After`; el estado es en
 memoria y por instancia.
 
-**Bloqueo de cuentas:** tres inicios de sesión fallidos consecutivos (`nexusmarket.login.lockout-after`, por defecto 3) bloquean la
-cuenta; solo un ADMIN la reactiva con `PATCH /api/users/{id}/activate`. **Verificación de correo:** las cuentas de registro
+**Bloqueo de cuentas:** tres inicios de sesión fallidos consecutivos (`nexusmarket.login.lockout-after`, por defecto 3) desde al
+menos dos orígenes distintos (`nexusmarket.login.lockout-min-clients`, por defecto 2) bloquean la cuenta; solo un ADMIN la
+reactiva con `PATCH /api/users/{id}/activate`. Un único origen queda limitado a 3 intentos por cuenta cada 15 minutos
+(`nexusmarket.login.max-per-client-and-email`) y no puede bloquearla. **Verificación de correo:** las cuentas de registro
 público no inician sesión hasta verificar el correo (la migración `V2` marca como verificados a los usuarios existentes). Los
 códigos de recuperación y de verificación se entregan por `NotificationPort`: con el adaptador de log quedan escritos en el log.
 

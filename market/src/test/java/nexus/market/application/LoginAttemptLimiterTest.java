@@ -49,6 +49,34 @@ class LoginAttemptLimiterTest {
                 .satisfies(e -> assertThat(((TooManyAttemptsException) e).retryAfterSeconds()).isBetween(1L, 901L));
     }
 
+    private LoginAttemptLimiter pairLimiter(int perClientAndEmail) {
+        return new LoginAttemptLimiter(clock, 100, 100, perClientAndEmail, Duration.ofMinutes(15));
+    }
+
+    @Test
+    void oneOrigin_cannotExceedItsQuotaForAnAccount_andDoesNotBurnTheEmailQuota() {
+        LoginAttemptLimiter limiter = pairLimiter(3);
+        for (int i = 0; i < 3; i++) {
+            limiter.acquire("10.0.0.1", "victima@example.com");
+        }
+        for (int i = 0; i < 20; i++) {
+            assertThatThrownBy(() -> limiter.acquire("10.0.0.1", "victima@example.com"))
+                    .isInstanceOf(TooManyAttemptsException.class);
+        }
+        // Otro origen sigue teniendo su propio cupo para esa cuenta, y para otras cuentas desde el mismo origen.
+        assertThatCode(() -> limiter.acquire("10.0.0.2", "victima@example.com")).doesNotThrowAnyException();
+        assertThatCode(() -> limiter.acquire("10.0.0.1", "otra@example.com")).doesNotThrowAnyException();
+    }
+
+    @Test
+    void successfulLogin_resetsThePairQuota() {
+        LoginAttemptLimiter limiter = pairLimiter(2);
+        limiter.acquire("10.0.0.1", "ana@example.com");
+        limiter.acquire("10.0.0.1", "ana@example.com");
+        limiter.reset("10.0.0.1", "ana@example.com");
+        assertThatCode(() -> limiter.acquire("10.0.0.1", "ana@example.com")).doesNotThrowAnyException();
+    }
+
     @Test
     void emailKey_ignoresCaseAndSurroundingSpaces() {
         LoginAttemptLimiter limiter = limiter(2, 100);

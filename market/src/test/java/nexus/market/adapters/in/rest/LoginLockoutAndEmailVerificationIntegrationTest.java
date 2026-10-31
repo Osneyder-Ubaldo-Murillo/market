@@ -47,7 +47,12 @@ class LoginLockoutAndEmailVerificationIntegrationTest extends RestTestSupport {
     }
 
     private MvcResultHolder login(String email, String password) throws Exception {
-        var result = perform(HttpMethod.POST, "/api/auth/login", null, body("email", email, "password", password));
+        return loginFrom(null, email, password);
+    }
+
+    private MvcResultHolder loginFrom(String origin, String email, String password) throws Exception {
+        var result = performFrom(origin, HttpMethod.POST, "/api/auth/login", null,
+                body("email", email, "password", password));
         return new MvcResultHolder(result.getResponse().getStatus(), result.getResponse().getContentAsString());
     }
 
@@ -58,18 +63,18 @@ class LoginLockoutAndEmailVerificationIntegrationTest extends RestTestSupport {
     }
 
     // ------------------------------------------------------------------
-    // Bloqueo tras 3 intentos
+    // Bloqueo tras 3 intentos desde varios orígenes
     // ------------------------------------------------------------------
 
     @Test
-    void threeWrongPasswords_blockTheAccount_andOnlyAnAdminReactivatesIt() throws Exception {
+    void threeWrongPasswordsFromTwoOrigins_blockTheAccount_andOnlyAnAdminReactivatesIt() throws Exception {
         Account buyer = registerBuyer();
         String email = emailOf(buyer);
         String admin = staffToken(SystemRole.ADMIN);
 
-        assertThat(login(email, "mala-1").status()).isEqualTo(401);
-        assertThat(login(email, "mala-2").status()).isEqualTo(401);
-        MvcResultHolder third = login(email, "mala-3");
+        assertThat(loginFrom("203.0.113.10", email, "mala-1").status()).isEqualTo(401);
+        assertThat(loginFrom("203.0.113.10", email, "mala-2").status()).isEqualTo(401);
+        MvcResultHolder third = loginFrom("203.0.113.20", email, "mala-3");
         // La respuesta que bloquea es idéntica a cualquier credencial incorrecta (no delata el bloqueo).
         assertThat(third.status()).isEqualTo(401);
         assertThat(third.code()).isEqualTo("INVALID_CREDENTIALS");

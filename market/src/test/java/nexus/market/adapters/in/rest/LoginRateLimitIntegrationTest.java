@@ -27,6 +27,7 @@ import org.springframework.test.web.servlet.MvcResult;
         "spring.data.mongodb.uri=",
         "spring.data.mongodb.database=test_audit",
         "nexusmarket.login.max-per-email=3",
+        "nexusmarket.login.max-per-client-and-email=100000",
         "nexusmarket.login.max-per-client=1000"
 })
 class LoginRateLimitIntegrationTest extends RestTestSupport {

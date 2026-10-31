@@ -51,7 +51,7 @@ Estado verificado contra el código y las pruebas (octubre de 2026). Para el det
 | Integridad referencial | Las relaciones entre agregados van por id, sin claves foráneas ni índices secundarios; cualquier cambio exige validar reglas de negocio y una migración `V2` |
 | Pruebas MySQL | Solo se ejecutan con `NEXUS_TEST_MYSQL_URL` (el CI las ejecuta). No hay pruebas MySQL de devoluciones y reembolsos |
 | Funcionalidad | Sin logout ni refresh de token |
-| Bloqueo de cuentas | 3 fallos consecutivos de login bloquean la cuenta; solo un ADMIN la reactiva. Contador en memoria (se pierde al reiniciar; el bloqueo sí persiste). Permite bloquear a otra persona conociendo su email |
+| Bloqueo de cuentas | 3 fallos consecutivos desde 2 o más orígenes distintos bloquean la cuenta; solo un ADMIN la reactiva. Un solo origen no puede bloquearla (429 tras 3 intentos por cuenta). Contador en memoria (se pierde al reiniciar; el bloqueo sí persiste). Quien controle varias IP puede aún bloquear a otra persona |
 | Migración V2 | `db/schema/V2__user_email_verification.sql` añade `users.email_verified_at`. **No validada contra MySQL real** (las pruebas `*MySqlTest` solo corren en el CI) |
 | Recuperación de contraseña | El código se entrega por `NotificationPort`; con el adaptador de log queda escrito en el log (solo académico). No aplica al ADMIN |
 | `AccessPolicy` | Ahora vive en la capa de aplicación (consulta puertos de repositorio, no pasa por un caso de uso propio); usa `SecurityContextHolder` de Spring Security |
