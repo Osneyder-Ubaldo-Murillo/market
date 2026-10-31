@@ -174,6 +174,45 @@ jobs:
             echo "::warning::La base de datos de NVD tiene $age_days días; revise el workflow de actualización."
           fi
 
+      # Validador de la base de NVD (scripts/ci/validate-nvd-database.sh, ver scripts/ci/NVD_VALIDATOR.md): FASE 1 = OBSERVACIÓN.
+      # Informa y NO bloquea el job, pero no oculta nada: cada resultado deja una anotación y un resumen. Mientras la caché
+      # restaurada tenga el marcador antiguo de 5 claves, el validador la rechazará («falta la clave …»): es lo esperado hasta que
+      # el workflow de actualización publique una base con el marcador de 13 claves. Lee una COPIA de la base.
+      - name: Validar la base de datos de NVD (observación, no bloquea)
+        timeout-minutes: 15
+        run: |
+          dir="$RUNNER_TEMP/dependency-check-data"
+          vlog="$RUNNER_TEMP/nvd-validator.log"
+          set +e
+          ./mvnw -B -ntp -q dependency:get -Dartifact=com.h2database:h2:2.4.240 -Dtransitive=false > "$vlog" 2>&1 \
+            && ./mvnw -B -ntp -q dependency:get -Dartifact=org.owasp:dependency-check-core:"$DEPENDENCY_CHECK_VERSION" -Dtransitive=false >> "$vlog" 2>&1
+          resolve_rc=$?
+          if [ "$resolve_rc" -ne 0 ]; then
+            echo "No se pudieron resolver los JAR del validador (Maven terminó con código $resolve_rc)." >> "$vlog"
+            rc=2
+          else
+            bash "$GITHUB_WORKSPACE/scripts/ci/validate-nvd-database.sh" --mode verify --dir "$dir" --valid-hours 4 >> "$vlog" 2>&1
+            rc=$?
+          fi
+          set -e
+          sed -e 's/^::error::/[error] /' -e 's/^::warning::/[aviso] /' "$vlog"
+          if [ "$rc" -eq 0 ]; then
+            echo "::notice::Validador de NVD: base ACEPTADA (código 0)."
+          elif [ "$rc" -eq 1 ]; then
+            echo "::warning::Validador de NVD: base RECHAZADA (código 1). Fase de observación: no bloquea el job. Con el marcador antiguo de 5 claves es lo esperado; con uno de 13 claves, revise el log."
+          else
+            echo "::error::Validador de NVD: resultado inesperado (código $rc; 2 = uso o entorno incorrecto, 3 = revisión humana). Fase de observación: no bloquea el job."
+          fi
+          {
+            echo "### Validador de la base de NVD (fase 1: observación, no bloquea)"
+            echo ""
+            echo "- Código de salida: \`$rc\` (0 válida, 1 rechazada, 2 uso o entorno incorrecto, 3 revisión humana)"
+            echo ""
+            echo '```'
+            sed -e 's/^::error::/[error] /' -e 's/^::warning::/[aviso] /' "$vlog" | head -c 60000 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Ejecutar OWASP Dependency-Check ${{ env.DEPENDENCY_CHECK_VERSION }}
         timeout-minutes: 20
         run: >-
