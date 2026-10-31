@@ -151,6 +151,38 @@ class PaymentTraceabilityIntegrationTest extends RestTestSupport {
     }
 
     @Test
+    void cancellingAPaidOrderTwice_refundsAndRestocksOnlyOnce() throws Exception {
+        String orderId = pendingOrder(2);
+        pay(orderId);
+        reset(payments);
+
+        send(HttpMethod.POST, "/api/orders/" + orderId + "/cancel", buyer.token(), "{}", 200);
+        int status = status(HttpMethod.POST, "/api/orders/" + orderId + "/cancel", buyer.token(), "{}");
+
+        assertThat(status).isBetween(400, 499);
+        verify(payments, org.mockito.Mockito.times(1)).refund(any(), any(Money.class), any());
+        assertThat(stock()).isEqualTo(10); // 10 iniciales: ni 12 (doble reposición) ni 8
+    }
+
+    @Test
+    void aDeliveredOrder_cannotBeCancelled_soItIsNeverRefundedTwiceThroughCancellation() throws Exception {
+        String orderId = pendingOrder(1);
+        pay(orderId);
+        String operator = staffToken(SystemRole.LOGISTICS_OPERATOR);
+        send(HttpMethod.POST, "/api/orders/" + orderId + "/dispatch", operator,
+                body("warehouseId", catalog.warehouseId()), 200);
+        send(HttpMethod.POST, "/api/orders/" + orderId + "/deliver", operator, "{}", 200);
+        reset(payments);
+        int stockBefore = stock();
+
+        int status = status(HttpMethod.POST, "/api/orders/" + orderId + "/cancel", buyer.token(), "{}");
+
+        assertThat(status).isBetween(400, 499);
+        verify(payments, never()).refund(any(), any(), any());
+        assertThat(stock()).isEqualTo(stockBefore);
+    }
+
+    @Test
     void cancellingAnUnpaidOrder_doesNotTouchThePaymentGateway() throws Exception {
         String orderId = pendingOrder(2);
         assertThat(stock()).isEqualTo(10); // reservado, aún no vendido
