@@ -1,7 +1,8 @@
 # Validador de la base NVD de Dependency-Check 12.2.2
 
 `validate-nvd-database.sh` comprueba si una base H2 de Dependency-Check (`odc.mv.db`) puede considerarse válida para
-transferirla (caché de Actions u otro medio). Todavía **no está integrado** en ningún workflow.
+transferirla (caché de Actions u otro medio). **Integración en CI: fase 1 (observación)**: los workflows lo ejecutan e
+informan su resultado, pero no bloquean (ver «Integración en CI» más abajo y `market/docs/CI_CD.md`).
 
 ## Qué comprueba
 
@@ -51,8 +52,10 @@ finales de línea LF (un marcador con CRLF se rechaza):
 | `run_id`, `commit` | workflow | `GITHUB_RUN_ID` y `GITHUB_SHA` (40 hexadecimales) |
 
 El marcador final = lo que escribe `--emit` (8 claves) + las 5 del workflow. Eso es lo que ejercitan las pruebas
-(`ida-y-vuelta`). El marcador que escribe hoy el workflow de actualización **no** cumple este contrato; la integración
-queda pendiente.
+(`ida-y-vuelta`). Desde la fase 1 de la integración, el workflow de actualización escribe el marcador de 13 claves **solo si
+el validador aprueba la base**; si no, escribe el de 5 claves de siempre (que este contrato rechaza) y lo declara como «SIN
+verificar». Una caché publicada antes de la integración tiene el marcador de 5 claves y `verify` la rechaza («falta la clave …»)
+hasta que se republique.
 
 ## Códigos de salida
 
@@ -157,8 +160,8 @@ evidencia, no por suposición.
    de los suppressions hospedados) no lo detecta este validador.
 7. Requiere bash 4+, GNU `date`/`sha256sum`/`mktemp`/`find -print0`/`sort -z`, Java 11+ y los jars `h2-2.4.240` y
    `dependency-check-core-12.2.2` ya presentes en `~/.m2` (o rutas dadas con `--h2-jar` / `--core-jar`). No descarga
-   nada. En el job `dependency-check` de CI esos jars **no existen** antes de ejecutar el plugin: hay que resolverlos
-   antes (decisión pendiente; no hay alternativa que apruebe sin H2).
+   nada. En CI esos jars no existen de antemano: los workflows los resuelven con `mvnw dependency:get` (sin dependencias
+   transitivas) antes de ejecutar el validador.
 
 ## Lectura en solo lectura: qué se demostró y qué no
 
@@ -169,6 +172,29 @@ evidencia, no por suposición.
 - `IFEXISTS=TRUE` evita que H2 cree una base vacía si la ruta es incorrecta.
 - Las credenciales de la base las lee `NvdDbInspect` del `dependencycheck.properties` del propio jar de
   Dependency-Check; no se muestran ni se registran. La salida de `NvdDbInspect` se limita a ASCII imprimible.
+
+## Integración en CI
+
+**Fase 1 (observación, vigente):**
+- `update-dependency-check-data.yml`: tras la actualización ejecuta `--mode create --valid-hours 4 --job-start-epoch <inicio capturado
+  justo antes de update-only> --emit` y compone el marcador (13 claves si el validador aprobó; 5 si no). Las ejecuciones desde una rama
+  que no es `main` no guardan caché y se detienen si no hay una base previa que restaurar.
+- `ci.yml`: en el job `dependency-check`, `--mode verify --valid-hours 4` antes del análisis; anota el resultado y no bloquea.
+- `nvd-validator-tests.yml`: la suite en Linux cuando cambian los archivos del validador.
+- Se muestra la salida del validador sin los prefijos `::error::`/`::warning::` y se emite **una** anotación por resultado: aviso
+  si lo rechaza (código 1), error si no puede ejecutarse o exige revisión (códigos 2 y 3), aviso informativo si lo aprueba. Un
+  error inesperado no se oculta, pero tampoco bloquea durante la observación.
+
+**Fase 2 (pendiente, PR aparte):** quitar la tolerancia (el job fallaría con los códigos 1, 2 y 3), exigir el marcador de 13 claves en
+`ci.yml`, y calibrar con los recuentos reales el umbral mínimo de registros, que hoy no existe. Antes hace falta revisar una base real.
+
+**Política `--valid-hours` y `-DnvdValidForHours`** (hallazgos de la lectura del bytecode de `NvdApiDataSource` 12.2.2; no se ha
+ejecutado contra NVD): `processApi` omite la actualización solo si hay datos, existe `nvd.api.last.checked`, el valor es **mayor
+que 0** y la última comprobación fue hace menos de esas horas; el valor por defecto de `dependencycheck.properties` es 4. Si no se
+omite, pide a la API solo lo modificado desde `nvd.api.last.modified` (ventana de 120 días como máximo, páginas de 2000, 50 peticiones
+cada 30 s con clave). KEV tiene su propia ventana (`kev.check.validforhours`, 24). Con 4 h, el run diario no se omite nunca; con 0 solo
+cambiaría una reejecución manual poco después de una actualización correcta (haría 1 o 2 peticiones más). No hay medición real de
+duración ni de consumo. Por eso la fase 1 usa `--valid-hours 4` y no toca el plugin.
 
 ## Pruebas
 
@@ -193,4 +219,6 @@ reciente (también falsificando el inicio); `--emit` previo, dentro de `--dir`, 
 simulados de `mktemp`, `cp` y `mv` mediante «shims» antepuestos al `PATH`.
 
 **No simulado:** un error de escritura real del temporal de `--emit` (disco lleno) y los enlaces simbólicos en sistemas
-que no los permiten (se marcan como omitidas). Tampoco se ha probado en Linux ni con una base NVD real.
+que no los permiten (se marcan como omitidas). **Linux:** la suite se ejecutó en un contenedor `eclipse-temurin:17-jdk-jammy`
+(sin red): 257 pasadas, 0 fallidas, 1 omitida (disco lleno); en Windows con Git Bash: 253 pasadas, 4 omitidas (los enlaces
+simbólicos no se pueden crear). Tampoco se ha probado con una base NVD real.

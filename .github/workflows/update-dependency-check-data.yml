@@ -2,6 +2,14 @@ name: Actualizar base de datos NVD (Dependency-Check)
 
 # Mantiene la base de datos de vulnerabilidades (H2) que usa el job "dependency-check" de ci.yml, para que el CI no
 # tenga que descargar NVD en cada ejecución. Detalle y diagnóstico: market/docs/CI_CD.md.
+#
+# Validador de la base (scripts/ci/validate-nvd-database.sh, ver scripts/ci/NVD_VALIDATOR.md): FASE 1 = OBSERVACIÓN. Se ejecuta
+# tras la actualización, informa su resultado y NO bloquea. Solo si lo aprueba se escribe el marcador completo de 13 claves; si
+# no, se escribe el de 5 claves de siempre y el log y el resumen del run lo declaran: «publicada SIN verificar».
+#
+# Ejecución manual desde una rama que no es main (Run workflow → elegir la rama): restaura la caché de main (las cachés de la
+# rama por defecto son legibles desde cualquier rama), actualiza y valida, pero NUNCA guarda caché (el paso de guardado solo
+# corre en main) y se niega a descargar NVD completo si no hay una base previa que restaurar.
 on:
   workflow_dispatch:
   schedule:
@@ -72,6 +80,20 @@ jobs:
           restore-keys: |
             dependency-check-data-${{ env.DEPENDENCY_CHECK_VERSION }}-
 
+      # Fuera de main no se admite una descarga completa de NVD (horas de API y de ejecución): si no hay caché de la que partir,
+      # el run se detiene aquí. En main se conserva el comportamiento de siempre (la primera vez sí descarga todo).
+      - name: Exigir una base previa en ejecuciones fuera de main
+        if: github.ref != 'refs/heads/main' && steps.dc-cache.outputs.cache-matched-key == ''
+        run: |
+          echo "::error::No hay ninguna base de NVD en caché que restaurar y este run no es de main: se detiene para no iniciar una descarga completa de NVD desde una rama. Ejecute primero el workflow en main."
+          exit 1
+
+      # Inicio de la actualización para el validador (--job-start-epoch): se captura DESPUÉS de restaurar la caché y justo antes
+      # de «update-only», como exige scripts/ci/NVD_VALIDATOR.md.
+      - name: Registrar el inicio de la actualización
+        id: nvd-start
+        run: echo "epoch=$(date -u +%s)" >> "$GITHUB_OUTPUT"
+
       - name: Actualizar la base de datos de NVD (${{ env.DEPENDENCY_CHECK_VERSION }})
         # Los errores no se toleran: si la actualización falla o excede el tiempo, el job falla y no se guarda caché.
         # La documentación consultada no garantiza que una actualización interrumpida se reanude; se asume que NO.
@@ -91,6 +113,8 @@ jobs:
       # Solo llega aquí si el paso anterior terminó con éxito (condición por defecto de los pasos).
       # El marcador se escribe DESPUÉS de la actualización y es lo que el CI exige para aceptar la base.
       - name: Comprobar la base actualizada y escribir el marcador
+        env:
+          JOB_START_EPOCH: ${{ steps.nvd-start.outputs.epoch }}
         run: |
           dir="$RUNNER_TEMP/dependency-check-data"
           log="$RUNNER_TEMP/nvd-update.log"
@@ -111,17 +135,72 @@ jobs:
           fi
           grep -E 'NVD API has .* records in this update|Skipping the NVD API Update as it was completed' "$log" \
             || echo "::warning::No se encontró en el registro la línea de resumen de la actualización de NVD."
+
+          # ---- Validador de la base de NVD: FASE 1 (observación). Informa, no bloquea, y no oculta nada. ----
+          # Lee una COPIA de la base (la original no se modifica). Códigos: 0 válida, 1 rechazada, 2 uso o entorno incorrecto,
+          # 3 revisión humana. Los JAR de H2 y dependency-check-core se resuelven aquí; si no se pueden resolver, es el código 2.
+          emit="$RUNNER_TEMP/nvd-validator-emit.env"
+          vlog="$RUNNER_TEMP/nvd-validator.log"
+          rm -f "$emit"
+          set +e
+          ./mvnw -B -ntp -q dependency:get -Dartifact=com.h2database:h2:2.4.240 -Dtransitive=false > "$vlog" 2>&1 \
+            && ./mvnw -B -ntp -q dependency:get -Dartifact=org.owasp:dependency-check-core:"$DEPENDENCY_CHECK_VERSION" -Dtransitive=false >> "$vlog" 2>&1
+          resolve_rc=$?
+          if [ "$resolve_rc" -ne 0 ]; then
+            echo "No se pudieron resolver los JAR del validador (Maven terminó con código $resolve_rc)." >> "$vlog"
+            rc=2
+          else
+            bash "$GITHUB_WORKSPACE/scripts/ci/validate-nvd-database.sh" --mode create --dir "$dir" \
+              --valid-hours 4 --job-start-epoch "$JOB_START_EPOCH" --emit "$emit" >> "$vlog" 2>&1
+            rc=$?
+          fi
+          set -e
+          # Se muestra el resultado sin los prefijos de anotación del validador: abajo se emite UNA anotación por resultado.
+          sed -e 's/^::error::/[error] /' -e 's/^::warning::/[aviso] /' "$vlog"
+          verified=0
+          if [ "$rc" -eq 0 ]; then
+            if [ -s "$emit" ]; then
+              verified=1
+              echo "::notice::Validador de NVD: base ACEPTADA (código 0). Se publica con el marcador completo de 13 claves."
+            else
+              echo "::error::Validador de NVD: código 0 pero --emit no escribió ningún dato. Fase de observación: no bloquea; la base se publica SIN verificar (marcador de 5 claves)."
+            fi
+          elif [ "$rc" -eq 1 ]; then
+            echo "::warning::Validador de NVD: base RECHAZADA (código 1). Fase de observación: no bloquea; la base se publica SIN verificar (marcador de 5 claves). Revise el log."
+          else
+            echo "::error::Validador de NVD: resultado inesperado (código $rc; 2 = uso o entorno incorrecto, 3 = revisión humana). Fase de observación: no bloquea; la base se publica SIN verificar (marcador de 5 claves)."
+          fi
           {
+            echo "### Validador de la base de NVD (fase 1: observación, no bloquea)"
+            echo ""
+            echo "- Código de salida: \`$rc\` (0 válida, 1 rechazada, 2 uso o entorno incorrecto, 3 revisión humana)"
+            if [ "$verified" -eq 1 ]; then
+              echo "- Marcador publicado: **13 claves (verificada por el validador)**"
+            else
+              echo "- Marcador publicado: **5 claves (NO verificada por el validador)**"
+            fi
+            echo "- Se publica en la caché: $([ "$GITHUB_REF" = refs/heads/main ] && echo sí || echo 'no (este run no es de main)')"
+            echo ""
+            echo '```'
+            sed -e 's/^::error::/[error] /' -e 's/^::warning::/[aviso] /' "$vlog" | head -c 60000 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Marcador: el de 13 claves (contrato del validador) solo si el validador aprobó la base; si no, el de 5 claves de siempre.
+          {
+            if [ "$verified" -eq 1 ]; then cat "$emit"; fi
             echo "dependency_check_version=$DEPENDENCY_CHECK_VERSION"
             echo "completed_epoch=$(date -u +%s)"
             echo "completed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "run_id=$GITHUB_RUN_ID"
             echo "commit=$GITHUB_SHA"
           } > "$dir/nexusmarket-nvd-update.properties"
-          echo "Base de datos NVD actualizada y marcada como completa:"
+          echo "Base de datos NVD actualizada y marcada como completa ($(wc -l < "$dir/nexusmarket-nvd-update.properties") claves en el marcador):"
           cat "$dir/nexusmarket-nvd-update.properties"
 
+      # SOLO en main: una ejecución manual desde otra rama valida y informa, pero nunca publica caché.
       - name: Guardar la base de datos de NVD en la caché
+        if: github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/dependency-check-data

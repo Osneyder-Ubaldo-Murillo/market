@@ -34,6 +34,17 @@ Workflow: `.github/workflows/update-dependency-check-data.yml` («Actualizar bas
 
 Diagnóstico de errores de NVD sin exponer secretos: abra el log del paso «Actualizar la base de datos de NVD» (GitHub enmascara el valor de los secretos) y busque códigos HTTP (403, 429, 503), reintentos o el progreso de registros. No use `-X` ni escriba el valor de la clave en comentarios, issues o logs.
 
+### Validador de la base de NVD (integración, fase 1: observación)
+
+El validador (`scripts/ci/validate-nvd-database.sh`, contrato y límites en `scripts/ci/NVD_VALIDATOR.md`) se integra en dos fases. **Esta es la fase 1: informa, no bloquea.** La fase 2 (un PR aparte) quitará la tolerancia cuando haya evidencia con una base real.
+
+- **Workflow de actualización:** tras `update-only` y la comprobación del log, ejecuta el validador en modo `create` sobre una **copia** de la base (la original no se modifica), con `--valid-hours 4` (el valor por defecto del plugin; **no** se añade `-DnvdValidForHours`). Si lo aprueba, el marcador tiene las **13 claves** del contrato (8 del validador + las 5 de siempre). Si lo rechaza o no puede ejecutarse (códigos 1, 2 o 3), el marcador conserva las **5 claves** de siempre y el run lo declara: anotación, log y resumen del run dicen «publicada SIN verificar». Un marcador de 13 claves significa «verificada por el validador»; uno de 5, no.
+- **`ci.yml` (job `dependency-check`):** ejecuta el validador en modo `verify` antes del análisis. Su resultado se anota (aviso si lo rechaza, error si no puede ejecutarse) pero **no hace fallar el job**. Mientras la caché restaurada tenga el marcador antiguo de 5 claves, el validador la rechazará con «falta la clave …»: es lo esperado hasta que el workflow de actualización publique una base con 13 claves.
+- **JAR:** el validador necesita `h2-2.4.240` y `dependency-check-core-12.2.2`; ambos pasos los resuelven con `dependency:get` (sin dependencias transitivas). Si no se pueden resolver, el resultado es el código 2 (se anota como error, no bloquea en esta fase).
+- **Pruebas del validador:** `.github/workflows/nvd-validator-tests.yml` ejecuta la suite en `ubuntu-latest` solo cuando cambian los archivos del validador o ese workflow. Usa bases H2 sintéticas: no descarga NVD, no usa secretos ni cachés.
+- **Ejecución manual desde una rama (probar sin riesgo):** *Actions → Actualizar base de datos NVD → Run workflow* eligiendo la rama. En una rama que no es `main` el run restaura la caché de `main` (las cachés de la rama por defecto son legibles desde cualquier rama), actualiza y valida, pero **nunca guarda caché** (el paso de guardado solo corre en `main`) y **se detiene** si no hay una base previa, para no iniciar una descarga completa de NVD. La evidencia (recuentos, fechas, archivos adicionales) queda en el log y en el resumen del run.
+- **Política de actualización (`--valid-hours`):** se usa 4 en la fase 1. Dependency-Check omite la actualización si la anterior terminó hace menos de `nvd.api.check.validforhours` (4 por defecto en 12.2.2). Para el run diario de las 03:23 UTC (más de 4 h después del anterior) esa omisión no ocurre nunca, de modo que `-DnvdValidForHours=0` no cambiaría el comportamiento diario; solo importaría en reejecuciones manuales poco después de una actualización correcta. Queda sin aplicar a la espera de evidencia.
+
 ## Pruebas MySQL en CI
 
 Contrato real de las pruebas (`@EnabledIfEnvironmentVariable` y `@TestPropertySource`):
