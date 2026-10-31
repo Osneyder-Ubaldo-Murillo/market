@@ -1,0 +1,61 @@
+name: Pruebas del validador de NVD
+
+# Ejecuta la suite de scripts/ci/test/test-validate-nvd-database.sh en Linux (ubuntu-latest) SOLO cuando cambian los archivos
+# del validador o este workflow. Usa bases H2 SINTÉTICAS: no descarga NVD, no usa secretos ni caché de NVD y no publica nada.
+# Detalle del validador: scripts/ci/NVD_VALIDATOR.md.
+on:
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'scripts/ci/validate-nvd-database.sh'
+      - 'scripts/ci/NvdDbInspect.java'
+      - 'scripts/ci/test/**'
+      - '.github/workflows/nvd-validator-tests.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'scripts/ci/validate-nvd-database.sh'
+      - 'scripts/ci/NvdDbInspect.java'
+      - 'scripts/ci/test/**'
+      - '.github/workflows/nvd-validator-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: '17'
+  # Debe coincidir con DEPENDENCY_CHECK_VERSION de ci.yml: el validador y las pruebas usan los JAR de esa versión.
+  DEPENDENCY_CHECK_VERSION: '12.2.2'
+
+jobs:
+  nvd-validator-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ./market
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Dar permisos al wrapper Maven
+        run: chmod +x mvnw
+
+      # Las pruebas no descargan nada: necesitan estos dos JAR ya en ~/.m2 (H2 y el JAR core con el esquema real de la base).
+      - name: Resolver los JAR que necesitan el validador y sus pruebas
+        run: |
+          ./mvnw -B -ntp -q dependency:get -Dartifact=com.h2database:h2:2.4.240 -Dtransitive=false
+          ./mvnw -B -ntp -q dependency:get -Dartifact=org.owasp:dependency-check-core:${{ env.DEPENDENCY_CHECK_VERSION }} -Dtransitive=false
+
+      - name: Ejecutar la suite del validador (bases H2 sintéticas)
+        timeout-minutes: 20
+        run: bash ../scripts/ci/test/test-validate-nvd-database.sh
