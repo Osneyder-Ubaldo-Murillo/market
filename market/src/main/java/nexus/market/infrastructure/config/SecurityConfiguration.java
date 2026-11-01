@@ -14,6 +14,8 @@ import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -56,6 +58,19 @@ public class SecurityConfiguration {
     private static final String OPERATOR = "LOGISTICS_OPERATOR";
     private static final String ADMIN = "ADMIN";
     private static final String SUPERVISOR = "SUPERVISOR";
+
+    /**
+     * Sin usuarios locales de Spring Security: la autenticación es solo el JWT. Si no existe ningún
+     * {@link UserDetailsService}, Spring Boot crea un usuario en memoria con una contraseña aleatoria y <b>la escribe en el
+     * log de arranque</b> ("Using generated security password"); este servicio vacío evita crear ese usuario y escribir ese
+     * secreto en los logs de producción.
+     */
+    @Bean
+    public UserDetailsService noLocalUsers() {
+        return username -> {
+            throw new UsernameNotFoundException("La aplicación no tiene usuarios locales: se autentica con JWT.");
+        };
+    }
 
     @Bean
     public JwtAuthenticationFilter jwtAuthenticationFilter(JwtServicePort jwtService,

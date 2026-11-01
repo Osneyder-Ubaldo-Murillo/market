@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import nexus.market.adapters.in.rest.mappers.RestMappers;
 import nexus.market.adapters.in.rest.requests.AuthRequests.ChangePasswordRequest;
+import nexus.market.adapters.in.rest.security.ClientAddressResolver;
 import nexus.market.adapters.in.rest.requests.AuthRequests.ForgotPasswordRequest;
 import nexus.market.adapters.in.rest.requests.AuthRequests.LoginRequest;
 import nexus.market.adapters.in.rest.requests.AuthRequests.ResendVerificationRequest;
@@ -58,12 +59,14 @@ public class AuthController {
     private final PasswordRecoveryUseCases recoveryUseCases;
     private final EmailVerificationLimiter verificationLimiter;
     private final EmailVerificationUseCases verificationUseCases;
+    private final ClientAddressResolver clientAddresses;
 
     public AuthController(AuthUseCases authUseCases, PasswordChangeUseCases passwordChangeUseCases,
                           LoginAttemptLimiter loginLimiter, RegistrationAttemptLimiter registrationLimiter,
                           PasswordRecoveryLimiter recoveryLimiter, PasswordRecoveryUseCases recoveryUseCases,
                           EmailVerificationLimiter verificationLimiter,
-                          EmailVerificationUseCases verificationUseCases) {
+                          EmailVerificationUseCases verificationUseCases, ClientAddressResolver clientAddresses) {
+        this.clientAddresses = clientAddresses;
         this.verificationLimiter = verificationLimiter;
         this.verificationUseCases = verificationUseCases;
         this.authUseCases = authUseCases;
@@ -79,7 +82,7 @@ public class AuthController {
     public ResponseEntity<BuyerResponse> registerBuyer(@Valid @RequestBody RegisterBuyerRequest request,
                                                        HttpServletRequest httpRequest) {
         // Registro público: limitado por email y por cliente (429) contra la creación masiva de cuentas.
-        registrationLimiter.acquire(httpRequest.getRemoteAddr(), request.email());
+        registrationLimiter.acquire(clientAddresses.resolve(httpRequest), request.email());
         Buyer buyer = authUseCases.registerBuyer(
                 FullName.of(request.fullName()),
                 Email.of(request.email()),
@@ -123,7 +126,7 @@ public class AuthController {
     @PostMapping("/password/forgot")
     public ResponseEntity<MessageResponse> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request,
                                                           HttpServletRequest httpRequest) {
-        recoveryLimiter.acquire(httpRequest.getRemoteAddr(), request.email());
+        recoveryLimiter.acquire(clientAddresses.resolve(httpRequest), request.email());
         recoveryUseCases.requestReset(Email.of(request.email()));
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(new MessageResponse(
                 "Si el correo corresponde a una cuenta que puede recuperarse, recibirá un código de recuperación."));
@@ -133,7 +136,7 @@ public class AuthController {
     @PostMapping("/password/reset")
     public ResponseEntity<MessageResponse> resetPassword(@Valid @RequestBody ResetPasswordRequest request,
                                                          HttpServletRequest httpRequest) {
-        recoveryLimiter.acquireClient(httpRequest.getRemoteAddr());
+        recoveryLimiter.acquireClient(clientAddresses.resolve(httpRequest));
         recoveryUseCases.resetPassword(request.token(), request.newPassword());
         return ResponseEntity.ok(new MessageResponse("Contraseña restablecida. Inicie sesión con la nueva contraseña."));
     }
@@ -142,7 +145,7 @@ public class AuthController {
     @PostMapping("/email/verify")
     public ResponseEntity<MessageResponse> verifyEmail(@Valid @RequestBody VerifyEmailRequest request,
                                                        HttpServletRequest httpRequest) {
-        verificationLimiter.acquireClient(httpRequest.getRemoteAddr());
+        verificationLimiter.acquireClient(clientAddresses.resolve(httpRequest));
         verificationUseCases.verify(request.token());
         return ResponseEntity.ok(new MessageResponse("Correo verificado. Ya puede iniciar sesión."));
     }
@@ -151,7 +154,7 @@ public class AuthController {
     @PostMapping("/email/resend")
     public ResponseEntity<MessageResponse> resendVerification(@Valid @RequestBody ResendVerificationRequest request,
                                                               HttpServletRequest httpRequest) {
-        verificationLimiter.acquire(httpRequest.getRemoteAddr(), request.email());
+        verificationLimiter.acquire(clientAddresses.resolve(httpRequest), request.email());
         verificationUseCases.resend(Email.of(request.email()));
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(new MessageResponse(
                 "Si el correo corresponde a una cuenta pendiente de verificar, recibirá un código nuevo."));
@@ -160,11 +163,12 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request,
                                                HttpServletRequest httpRequest) {
+        // La misma dirección para el límite, el bloqueo de cuentas y el reinicio del contador.
+        String client = clientAddresses.resolve(httpRequest);
         // Intento reservado ANTES de verificar la contraseña (429 si se agotó el cupo del cliente o del email).
-        loginLimiter.acquire(httpRequest.getRemoteAddr(), request.email());
-        AuthUseCases.AuthResult result = authUseCases.login(Email.of(request.email()), request.password(),
-                httpRequest.getRemoteAddr());
-        loginLimiter.reset(httpRequest.getRemoteAddr(), request.email());
+        loginLimiter.acquire(client, request.email());
+        AuthUseCases.AuthResult result = authUseCases.login(Email.of(request.email()), request.password(), client);
+        loginLimiter.reset(client, request.email());
         return ResponseEntity.ok(new TokenResponse(
                 result.token(), result.userId().value(), result.role().getCode()));
     }

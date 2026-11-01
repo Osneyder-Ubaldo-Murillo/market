@@ -81,10 +81,18 @@ services:
       MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: never
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      # Proxies inversos propios (IP o CIDR, separados por comas) cuyo X-Forwarded-For se acepta. Vacío: ninguno.
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
       # Pasarela de pago SIMULADA (no cobra): con el perfil prod la aplicación NO arranca si esto no es "true".
       # Es una autorización explícita y académica; por defecto queda bloqueada. Ver market/docs/ENTORNOS.md.
       NEXUSMARKET_PAYMENT_SIMULATED_ALLOWED: ${NEXUSMARKET_PAYMENT_SIMULATED_ALLOWED:-false}
+      # Notificaciones por LOG: escriben en claro los códigos de verificación y de recuperación de contraseña. Con el perfil
+      # prod la aplicación NO arranca si esto no es "true"; declárelo solo en una demostración académica. Ver market/docs/ENTORNOS.md.
+      # Transportadora SIMULADA (seguimiento ficticio, no crea envíos reales): con el perfil prod la aplicación NO arranca si esto
+      # no es "true". Ver market/docs/ENTORNOS.md.
+      NEXUSMARKET_SHIPPING_SIMULATED_ALLOWED: ${NEXUSMARKET_SHIPPING_SIMULATED_ALLOWED:-false}
+      NEXUSMARKET_NOTIFICATIONS_LOGGING_ALLOWED: ${NEXUSMARKET_NOTIFICATIONS_LOGGING_ALLOWED:-false}
       # Administrador inicial: DESHABILITADO por defecto. Ver market/docs/ADMIN_INICIAL_ACTIVACION.md.
       # Activar solo en el primer arranque; la contraseña se entrega preferentemente por archivo de secreto.
       NEXUSMARKET_BOOTSTRAP_ADMIN_ENABLED: ${NEXUSMARKET_BOOTSTRAP_ADMIN_ENABLED:-false}

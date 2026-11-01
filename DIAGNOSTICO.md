@@ -39,6 +39,27 @@ Estado verificado contra el código y las pruebas (octubre de 2026). Para el det
 10. El catálogo público y los pedidos del comprador se listan paginados (antes el catálogo devolvía toda la tabla).
 11. Los reembolsos comprueban su estado antes de llamar a la pasarela, bloquean su fila y conservan `FAILED` si la pasarela falla (y un `FAILED` puede reprocesarse). Si el pago no se completa tras el cobro, se intenta anular el cobro; los pedidos pagados antes de `V3` usan la referencia derivada `CHARGE-<pedido>` (auditada, no es un id real de pasarela).
 
+## Cierre técnico previo a producción (2026-11-01)
+
+Cambios de esta fase, todos con pruebas (ver `market/docs/ENTORNOS.md` y `market/docs/PAGOS_IDEMPOTENCIA.md`):
+
+1. **Errores HTTP:** una excepción del framework con estado 4xx sin handler propio (p. ej. `Accept` sin representación, 406)
+   responde 4xx con el formato de la API en vez de 500. El 500 queda para errores inesperados, sin detalles internos.
+2. **Notificaciones por log bloqueadas en `prod`** salvo `NEXUSMARKET_NOTIFICATIONS_LOGGING_ALLOWED=true`: escriben en claro los
+   códigos de verificación y de recuperación de contraseña.
+3. **Transportadora simulada bloqueada en `prod`** salvo `NEXUSMARKET_SHIPPING_SIMULATED_ALLOWED=true`.
+4. **IP del cliente detrás de un proxy:** `TRUSTED_PROXIES` (IP/CIDR). Solo desde esos proxies se lee `X-Forwarded-For`, de derecha a
+   izquierda; por defecto no se confía en ninguna cabecera. Un valor inválido o `/0` impide arrancar.
+5. **Sin contraseña generada en el log:** se declara un `UserDetailsService` sin usuarios; antes Spring Boot escribía
+   "Using generated security password" en el arranque.
+6. **MongoDB caído:** los tiempos de espera del cliente quedan acotados (`nexusmarket.audit.mongo.timeout-ms`, 2000 ms). Antes cada
+   operación auditada retenía su hilo ~30 s y el health tardaba lo mismo en dar 503.
+7. Pruebas nuevas de cabeceras de seguridad (sin cookies de sesión, `nosniff`, `X-Frame-Options`, no-store, HSTS solo bajo HTTPS).
+8. `.gitignore` protege `market/effective-pom` y `market/src/main/resources/db/migration/` (sin afectar a `db/schema`).
+
+Verificado con servicios desechables: arranque desde cero con las 3 migraciones, 20 tablas validadas por Hibernate, datos
+conservados tras reiniciar la aplicación, y recuperación sin reiniciar tras aislar MySQL (503 con el formato de la API) y MongoDB.
+
 ## Limitaciones conocidas y pendientes
 
 | Tema | Detalle |
@@ -46,22 +67,27 @@ Estado verificado contra el código y las pruebas (octubre de 2026). Para el det
 | Idempotencia del pago real | El id de transacción ya se guarda (`V3`), pero una pasarela real aún necesita clave de idempotencia, intento de pago y reconciliación. Ver `market/docs/PAGOS_IDEMPOTENCIA.md` |
 | Inventario con varias bodegas | `releaseForProduct` libera en la primera bodega con reserva suficiente, que podría no ser la que reservó; solo afecta a productos repartidos en varias bodegas |
 | Tamaño del cuerpo JSON | No hay límite explícito del tamaño de una petición JSON (se probaron 100 KB sin problema) |
-| Límite de login | En memoria y por instancia; detrás de un proxy sin reenvío de cabeceras todos los clientes comparten IP |
-| Migraciones antiguas | `db/migration/V1__schema.sql` (SQL inválido) y `V2__seed.sql` (cuentas con contraseña conocida) siguen sin versionar y fuera de Flyway; no se borran ni se mueven. Decisión pendiente del responsable |
+| Estado de los límites | Los limitadores y los contadores del bloqueo de cuentas son en memoria y por instancia; con N instancias el tope se multiplica. **Decisión pendiente de autorización:** compartir ese estado exigiría tablas nuevas en MySQL y una escritura en cada intento. Hoy: una sola instancia o afinidad por IP en el balanceador. Detrás de un proxy propio, `TRUSTED_PROXIES` |
+| Migraciones antiguas | `db/migration/V1__schema.sql` (SQL inválido) y `V2__seed.sql` (cuentas con contraseña conocida) siguen sin versionar y fuera de Flyway, del jar y de la imagen; ahora `.gitignore` las protege. No se borran ni se mueven. Esas credenciales estuvieron publicadas en el historial de GitHub: considérelas expuestas |
 | Integridad referencial | Las relaciones entre agregados van por id, sin claves foráneas ni índices secundarios; cualquier cambio exige validar reglas de negocio y una migración `V2` |
-| Pruebas MySQL | Solo se ejecutan con `NEXUS_TEST_MYSQL_URL` (el CI las ejecuta). No hay pruebas MySQL de devoluciones y reembolsos |
+| Pruebas MySQL | Solo se ejecutan con `NEXUS_TEST_MYSQL_URL` (el CI las ejecuta y comprueba que no queden omitidas). Incluyen devoluciones y reembolsos, inventario, cambio de contraseña, administrador inicial y pool |
 | Funcionalidad | Sin logout ni refresh de token |
 | Bloqueo de cuentas | 3 fallos consecutivos desde 2 o más orígenes distintos bloquean la cuenta; solo un ADMIN la reactiva. Un solo origen no puede bloquearla (429 tras 3 intentos por cuenta). Contador en memoria (se pierde al reiniciar; el bloqueo sí persiste). Quien controle varias IP puede aún bloquear a otra persona |
-| Migración V2 | `db/schema/V2__user_email_verification.sql` añade `users.email_verified_at`. **No validada contra MySQL real** (las pruebas `*MySqlTest` solo corren en el CI) |
-| Recuperación de contraseña | El código se entrega por `NotificationPort`; con el adaptador de log queda escrito en el log (solo académico). No aplica al ADMIN |
+| Migración V2 | `db/schema/V2__user_email_verification.sql` añade `users.email_verified_at`. Validada: las pruebas `*MySqlTest` aplican las tres migraciones con Flyway y Hibernate `validate`, y la imagen arranca desde cero con ellas |
+| Recuperación de contraseña | El código se entrega por `NotificationPort`; con el adaptador de log queda escrito en el log, por lo que **en `prod` el adaptador está bloqueado salvo autorización expresa** (solo demostración). No aplica al ADMIN |
 | `AccessPolicy` | Ahora vive en la capa de aplicación (consulta puertos de repositorio, no pasa por un caso de uso propio); usa `SecurityContextHolder` de Spring Security |
 
 ## Hoja de ruta pendiente
 
 ### P0 — Antes de cualquier despliegue real
-- [ ] Decidir el destino de `db/migration` (versionarla como histórica fuera del classpath, o conservarla local).
-- [ ] Verificar en MySQL real el orden de bloqueo de devoluciones y reembolsos.
-- [ ] Persistir el id de transacción del pago (cambio de esquema aprobado) o sustituir la pasarela simulada por una real.
+- [x] Decidir el destino de `db/migration`: se conserva solo en local, fuera de Flyway, del jar, de la imagen y de Git (`.gitignore`).
+- [x] Verificar en MySQL real el orden de bloqueo de devoluciones y reembolsos (`ReturnRefundConcurrencyMySqlTest`).
+- [x] Persistir el id de transacción del pago (`V3`).
+- [ ] Sustituir la pasarela de pago, la transportadora y las notificaciones simuladas por proveedores reales y probarlos en su
+      *sandbox* (requisito externo: proveedor, credenciales). Ver `market/docs/PAGOS_IDEMPOTENCIA.md`.
+- [ ] Idempotencia de pago con clave por intento, tabla de intentos y reconciliación (cambio de esquema; solo con aprobación).
+- [ ] Decidir el estado compartido de los limitadores entre instancias (o fijar una sola instancia).
+- [ ] Infraestructura de destino: HTTPS y HSTS en el proxy, secretos, copias de seguridad y restauración, monitoreo.
 
 ### P1 — Funcionalidad
 - [x] Listados paginados del catálogo público y de los pedidos del comprador (`page`, `size`, `X-Total-Count`).
@@ -69,7 +95,7 @@ Estado verificado contra el código y las pruebas (octubre de 2026). Para el det
 - [x] Edición de nombre y descripción de productos (`PUT /api/products/{id}`).
 - [x] Recuperación de contraseña (`/api/auth/password/forgot` y `/reset`) y límite del registro público.
 - [x] Verificación de correo (`/api/auth/email/verify`, `/resend`; migración `V2`) y bloqueo de la cuenta tras 3 fallos de login.
-- [ ] Ejecutar en el CI / MySQL desechable la migración `V2` y comprobar que Hibernate la valida.
+- [x] Ejecutar en el CI / MySQL desechable la migración `V2` y comprobar que Hibernate la valida.
 - [x] `AccessPolicy` movida a la capa de aplicación y `JwtAuthenticationFilter` a `adapters.in.rest.security`.
 
 ### P2 — Mejoras
@@ -82,7 +108,8 @@ Estado verificado contra el código y las pruebas (octubre de 2026). Para el det
 ```bash
 cp .env.example .env
 # Rellene las variables obligatorias (contraseñas, JWT_SECRET) y, para un despliegue académico,
-# NEXUSMARKET_PAYMENT_SIMULATED_ALLOWED=true
+# NEXUSMARKET_PAYMENT_SIMULATED_ALLOWED=true, NEXUSMARKET_SHIPPING_SIMULATED_ALLOWED=true y
+# NEXUSMARKET_NOTIFICATIONS_LOGGING_ALLOWED=true (los tres simuladores están bloqueados en prod por defecto)
 docker compose up -d
 curl http://localhost:8080/actuator/health
 ```
