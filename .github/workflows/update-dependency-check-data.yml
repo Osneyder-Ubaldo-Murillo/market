@@ -3,9 +3,10 @@ name: Actualizar base de datos NVD (Dependency-Check)
 # Mantiene la base de datos de vulnerabilidades (H2) que usa el job "dependency-check" de ci.yml, para que el CI no
 # tenga que descargar NVD en cada ejecución. Detalle y diagnóstico: market/docs/CI_CD.md.
 #
-# Validador de la base (scripts/ci/validate-nvd-database.sh, ver scripts/ci/NVD_VALIDATOR.md): FASE 1 = OBSERVACIÓN. Se ejecuta
-# tras la actualización, informa su resultado y NO bloquea. Solo si lo aprueba se escribe el marcador completo de 13 claves; si
-# no, se escribe el de 5 claves de siempre y el log y el resumen del run lo declaran: «publicada SIN verificar».
+# Validador de la base (scripts/ci/validate-nvd-database.sh, ver scripts/ci/NVD_VALIDATOR.md): FASE 2 = BLOQUEA. Se ejecuta tras
+# la actualización y, si no aprueba la base (con los minimos de registros de NVD_MIN_*), el run FALLA antes de escribir el
+# marcador y de guardar la caché: la última base validada se conserva y el CI sigue usándola (hasta 7 días de antigüedad). Solo
+# una base aprobada se publica, siempre con el marcador completo de 13 claves.
 #
 # Ejecución manual desde una rama que no es main (Run workflow → elegir la rama): restaura la caché de main (las cachés de la
 # rama por defecto son legibles desde cualquier rama), actualiza y valida, pero NUNCA guarda caché (el paso de guardado solo
@@ -30,6 +31,10 @@ env:
   # Debe coincidir con DEPENDENCY_CHECK_VERSION de ci.yml: la versión forma parte del nombre de la caché y el formato de
   # la base H2 no es compatible entre versiones mayores.
   DEPENDENCY_CHECK_VERSION: '12.2.2'
+  # Minimos de registros que exige el validador (fase 2). Deben coincidir con los de ci.yml (alli esta el criterio de calibracion).
+  NVD_MIN_VULNERABILITY: '200000'
+  NVD_MIN_CPE_ENTRY: '215000'
+  NVD_MIN_KNOWN_EXPLOITED: '1400'
 
 jobs:
   update-nvd-data:
@@ -136,7 +141,7 @@ jobs:
           grep -E 'NVD API has .* records in this update|Skipping the NVD API Update as it was completed' "$log" \
             || echo "::warning::No se encontró en el registro la línea de resumen de la actualización de NVD."
 
-          # ---- Validador de la base de NVD: FASE 1 (observación). Informa, no bloquea, y no oculta nada. ----
+          # ---- Validador de la base de NVD: FASE 2 (bloquea). Si no aprueba la base, el run falla y no se escribe marcador ni caché. ----
           # Lee una COPIA de la base (la original no se modifica). Códigos: 0 válida, 1 rechazada, 2 uso o entorno incorrecto,
           # 3 revisión humana. Los JAR de H2 y dependency-check-core se resuelven aquí; si no se pueden resolver, es el código 2.
           emit="$RUNNER_TEMP/nvd-validator-emit.env"
@@ -151,51 +156,55 @@ jobs:
             rc=2
           else
             bash "$GITHUB_WORKSPACE/scripts/ci/validate-nvd-database.sh" --mode create --dir "$dir" \
-              --valid-hours 4 --job-start-epoch "$JOB_START_EPOCH" --emit "$emit" >> "$vlog" 2>&1
+              --valid-hours 4 --job-start-epoch "$JOB_START_EPOCH" --emit "$emit" \
+              --min-vulnerability "$NVD_MIN_VULNERABILITY" --min-cpe-entry "$NVD_MIN_CPE_ENTRY" \
+              --min-known-exploited "$NVD_MIN_KNOWN_EXPLOITED" >> "$vlog" 2>&1
             rc=$?
           fi
           set -e
           # Se muestra el resultado sin los prefijos de anotación del validador: abajo se emite UNA anotación por resultado.
           sed -e 's/^::error::/[error] /' -e 's/^::warning::/[aviso] /' "$vlog"
           verified=0
-          if [ "$rc" -eq 0 ]; then
-            if [ -s "$emit" ]; then
-              verified=1
-              echo "::notice::Validador de NVD: base ACEPTADA (código 0). Se publica con el marcador completo de 13 claves."
-            else
-              echo "::error::Validador de NVD: código 0 pero --emit no escribió ningún dato. Fase de observación: no bloquea; la base se publica SIN verificar (marcador de 5 claves)."
-            fi
-          elif [ "$rc" -eq 1 ]; then
-            echo "::warning::Validador de NVD: base RECHAZADA (código 1). Fase de observación: no bloquea; la base se publica SIN verificar (marcador de 5 claves). Revise el log."
-          else
-            echo "::error::Validador de NVD: resultado inesperado (código $rc; 2 = uso o entorno incorrecto, 3 = revisión humana). Fase de observación: no bloquea; la base se publica SIN verificar (marcador de 5 claves)."
-          fi
+          if [ "$rc" -eq 0 ] && [ -s "$emit" ]; then verified=1; fi
           {
-            echo "### Validador de la base de NVD (fase 1: observación, no bloquea)"
+            echo "### Validador de la base de NVD (fase 2: bloquea)"
             echo ""
             echo "- Código de salida: \`$rc\` (0 válida, 1 rechazada, 2 uso o entorno incorrecto, 3 revisión humana)"
+            echo "- Mínimos exigidos: vulnerability=$NVD_MIN_VULNERABILITY cpeEntry=$NVD_MIN_CPE_ENTRY knownExploited=$NVD_MIN_KNOWN_EXPLOITED"
             if [ "$verified" -eq 1 ]; then
-              echo "- Marcador publicado: **13 claves (verificada por el validador)**"
+              echo "- Resultado: **base aprobada; se publica con el marcador de 13 claves**"
+              echo "- Se publica en la caché: $([ "$GITHUB_REF" = refs/heads/main ] && echo sí || echo 'no (este run no es de main)')"
             else
-              echo "- Marcador publicado: **5 claves (NO verificada por el validador)**"
+              echo "- Resultado: **base NO aprobada; el run falla y NO se publica ninguna caché (se conserva la anterior)**"
             fi
-            echo "- Se publica en la caché: $([ "$GITHUB_REF" = refs/heads/main ] && echo sí || echo 'no (este run no es de main)')"
             echo ""
             echo '```'
             sed -e 's/^::error::/[error] /' -e 's/^::warning::/[aviso] /' "$vlog" | head -c 60000 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$rc" -eq 0 ] && [ "$verified" -eq 1 ]; then
+            echo "::notice::Validador de NVD: base ACEPTADA (código 0). Se publica con el marcador completo de 13 claves."
+          elif [ "$rc" -eq 0 ]; then
+            echo "::error::Validador de NVD: código 0 pero --emit no escribió ningún dato. No se escribe el marcador ni se guarda la caché."
+            exit 1
+          elif [ "$rc" -eq 1 ]; then
+            echo "::error::Validador de NVD: base RECHAZADA (código 1). No se escribe el marcador ni se guarda la caché; se conserva la base anterior. Revise el log."
+            exit 1
+          else
+            echo "::error::Validador de NVD: no se pudo aprobar la base (código $rc; 2 = uso o entorno incorrecto, 3 = revisión humana). No se escribe el marcador ni se guarda la caché."
+            exit 1
+          fi
 
-          # Marcador: el de 13 claves (contrato del validador) solo si el validador aprobó la base; si no, el de 5 claves de siempre.
+          # Marcador de 13 claves: lo emitido por el validador (8 claves) + el contexto de la ejecución (5 claves).
           {
-            if [ "$verified" -eq 1 ]; then cat "$emit"; fi
+            cat "$emit"
             echo "dependency_check_version=$DEPENDENCY_CHECK_VERSION"
             echo "completed_epoch=$(date -u +%s)"
             echo "completed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "run_id=$GITHUB_RUN_ID"
             echo "commit=$GITHUB_SHA"
           } > "$dir/nexusmarket-nvd-update.properties"
-          echo "Base de datos NVD actualizada y marcada como completa ($(wc -l < "$dir/nexusmarket-nvd-update.properties") claves en el marcador):"
+          echo "Base de datos NVD actualizada, validada y marcada como completa ($(wc -l < "$dir/nexusmarket-nvd-update.properties") claves en el marcador):"
           cat "$dir/nexusmarket-nvd-update.properties"
 
       # SOLO en main: una ejecución manual desde otra rama valida y informa, pero nunca publica caché.

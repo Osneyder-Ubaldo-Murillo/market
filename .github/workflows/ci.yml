@@ -11,6 +11,13 @@ env:
   MAVEN_VERSION: '3.9.x'
   # OWASP Dependency-Check: version fijada (no se resuelve "la ultima"). Umbral: falla con CVSS >= 7.0.
   DEPENDENCY_CHECK_VERSION: '12.2.2'
+  # Minimos de registros que el validador de la base de NVD exige (fase 2). Calibrados el 2026-11-01 con ~80 % de lo observado en
+  # dos ejecuciones reales (vulnerability=246568, cpeEntry=268022, knownExploited=1766): detectan una descarga truncada, no
+  # prueban que la base este completa. NVD solo crece: revisarlos de vez en cuando. Deben coincidir con los de
+  # update-dependency-check-data.yml (ver market/docs/CI_CD.md y scripts/ci/NVD_VALIDATOR.md).
+  NVD_MIN_VULNERABILITY: '200000'
+  NVD_MIN_CPE_ENTRY: '215000'
+  NVD_MIN_KNOWN_EXPLOITED: '1400'
   IMAGE_NAME: osneyder/nexusmarket
 
 # Detalle de secretos, criterios y como habilitar el despliegue: market/docs/CI_CD.md
@@ -174,11 +181,11 @@ jobs:
             echo "::warning::La base de datos de NVD tiene $age_days días; revise el workflow de actualización."
           fi
 
-      # Validador de la base de NVD (scripts/ci/validate-nvd-database.sh, ver scripts/ci/NVD_VALIDATOR.md): FASE 1 = OBSERVACIÓN.
-      # Informa y NO bloquea el job, pero no oculta nada: cada resultado deja una anotación y un resumen. Mientras la caché
-      # restaurada tenga el marcador antiguo de 5 claves, el validador la rechazará («falta la clave …»): es lo esperado hasta que
-      # el workflow de actualización publique una base con el marcador de 13 claves. Lee una COPIA de la base.
-      - name: Validar la base de datos de NVD (observación, no bloquea)
+      # Validador de la base de NVD (scripts/ci/validate-nvd-database.sh, ver scripts/ci/NVD_VALIDATOR.md): FASE 2 = BLOQUEA.
+      # Cualquier resultado distinto de «aceptada» (1 rechazada, 2 uso o entorno incorrecto, 3 revisión humana) hace fallar el
+      # job: no se analiza con una base que no se ha podido verificar. Exige el marcador de 13 claves (el que escribe el workflow
+      # de actualización cuando el validador aprueba la base) y los minimos de registros de NVD_MIN_*. Lee una COPIA de la base.
+      - name: Validar la base de datos de NVD (bloquea)
         timeout-minutes: 15
         run: |
           dir="$RUNNER_TEMP/dependency-check-data"
@@ -191,27 +198,32 @@ jobs:
             echo "No se pudieron resolver los JAR del validador (Maven terminó con código $resolve_rc)." >> "$vlog"
             rc=2
           else
-            bash "$GITHUB_WORKSPACE/scripts/ci/validate-nvd-database.sh" --mode verify --dir "$dir" --valid-hours 4 >> "$vlog" 2>&1
+            bash "$GITHUB_WORKSPACE/scripts/ci/validate-nvd-database.sh" --mode verify --dir "$dir" --valid-hours 4 \
+              --min-vulnerability "$NVD_MIN_VULNERABILITY" --min-cpe-entry "$NVD_MIN_CPE_ENTRY" \
+              --min-known-exploited "$NVD_MIN_KNOWN_EXPLOITED" >> "$vlog" 2>&1
             rc=$?
           fi
           set -e
           sed -e 's/^::error::/[error] /' -e 's/^::warning::/[aviso] /' "$vlog"
-          if [ "$rc" -eq 0 ]; then
-            echo "::notice::Validador de NVD: base ACEPTADA (código 0)."
-          elif [ "$rc" -eq 1 ]; then
-            echo "::warning::Validador de NVD: base RECHAZADA (código 1). Fase de observación: no bloquea el job. Con el marcador antiguo de 5 claves es lo esperado; con uno de 13 claves, revise el log."
-          else
-            echo "::error::Validador de NVD: resultado inesperado (código $rc; 2 = uso o entorno incorrecto, 3 = revisión humana). Fase de observación: no bloquea el job."
-          fi
           {
-            echo "### Validador de la base de NVD (fase 1: observación, no bloquea)"
+            echo "### Validador de la base de NVD (fase 2: bloquea)"
             echo ""
             echo "- Código de salida: \`$rc\` (0 válida, 1 rechazada, 2 uso o entorno incorrecto, 3 revisión humana)"
+            echo "- Mínimos exigidos: vulnerability=$NVD_MIN_VULNERABILITY cpeEntry=$NVD_MIN_CPE_ENTRY knownExploited=$NVD_MIN_KNOWN_EXPLOITED"
             echo ""
             echo '```'
             sed -e 's/^::error::/[error] /' -e 's/^::warning::/[aviso] /' "$vlog" | head -c 60000 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$rc" -eq 0 ]; then
+            echo "::notice::Validador de NVD: base ACEPTADA (código 0)."
+          elif [ "$rc" -eq 1 ]; then
+            echo "::error::Validador de NVD: base RECHAZADA (código 1). El job falla: no se analiza con una base que no ha superado la validación. Revise el log; si la caché es antigua, ejecute el workflow de actualización de NVD."
+            exit 1
+          else
+            echo "::error::Validador de NVD: no se pudo aprobar la base (código $rc; 2 = uso o entorno incorrecto, 3 = revisión humana). El job falla."
+            exit 1
+          fi
 
       - name: Ejecutar OWASP Dependency-Check ${{ env.DEPENDENCY_CHECK_VERSION }}
         timeout-minutes: 20

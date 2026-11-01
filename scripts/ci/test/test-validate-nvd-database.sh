@@ -12,8 +12,8 @@
 #
 # Uso: bash scripts/ci/test/test-validate-nvd-database.sh [filtro]
 #   filtro (opcional): expresion regular; solo se ejecutan las secciones cuyo nombre la cumpla
-#   (positivo, archivo, archivos-extra, internos, esquema, entorno, politica, parametros-prueba, integridad, orden,
-#    emit, temporales, file-only, verify, parcial, ida-y-vuelta).
+#   (positivo, archivo, archivos-extra, internos, esquema, minimos, plugin-propios, entorno, politica, parametros-prueba,
+#    integridad, orden, emit, temporales, file-only, verify, parcial, ida-y-vuelta).
 # Entorno opcional: JAVA (ejecutable de Java 11+), M2_REPO (por defecto ~/.m2/repository), TMPDIR.
 set -uo pipefail
 
@@ -275,7 +275,109 @@ sec_esquema() {
   expect_has "...ni registros CPE" "la tabla cpeEntry esta vacia"
   mk zero_cpe 5.6 "$GOOD_CHECKED" "$GOOD_MODIFIED" 3 0 1;  val create "$ROOT/zero_cpe"; expect_fail "cpeEntry vacia" "la tabla cpeEntry esta vacia"
   mk zero_vul 5.6 "$GOOD_CHECKED" "$GOOD_MODIFIED" 0 2 1;  val create "$ROOT/zero_vul"; expect_fail "vulnerability vacia" "la tabla vulnerability esta vacia"
-  echo "  (no hay pruebas de umbral minimo de registros: no existe un umbral demostrado; ver NVD_VALIDATOR.md)"
+}
+
+sec_minimos() {
+  local lo="--min-vulnerability 4"
+  # Limite exacto: la fixture "good" tiene 3 / 2 / 1 filas.
+  val create "$ROOT/good" --min-vulnerability 3 --min-cpe-entry 2 --min-known-exploited 1
+  expect_ok "limite: recuentos iguales a los minimos (3 / 2 / 1): se acepta"
+  expect_has "...la politica efectiva muestra los minimos" "Minimos de registros (0 = sin minimo; vulnerability y cpeEntry exigen siempre >= 1): vulnerability=3 cpeEntry=2 knownExploited=1"
+  expect_has "...y el aviso final explica que los minimos solo detectan una descarga truncada" "Los minimos de registros solo detectan una descarga truncada"
+  val create "$ROOT/good" --min-vulnerability 4
+  expect_fail "vulnerability un registro por debajo del minimo" "la tabla vulnerability tiene 3 registros, por debajo del minimo exigido (4)"
+  val create "$ROOT/good" --min-cpe-entry 3
+  expect_fail "cpeEntry un registro por debajo del minimo" "la tabla cpeEntry tiene 2 registros, por debajo del minimo exigido (3)"
+  val create "$ROOT/good" --min-known-exploited 2
+  expect_fail "knownExploited un registro por debajo del minimo" "la tabla knownExploited tiene 1 registros, por debajo del minimo exigido (2)"
+  expect_has "...el rechazo explica la causa probable" "descarga incompleta o truncada"
+  val create "$ROOT/good" --min-vulnerability 4 --min-cpe-entry 3 --min-known-exploited 2
+  expect_fail "las tres tablas por debajo: se informan las tres" "la tabla vulnerability tiene 3"
+  expect_has "...cpeEntry tambien" "la tabla cpeEntry tiene 2"
+  expect_has "...knownExploited tambien" "la tabla knownExploited tiene 1"
+  # Sin minimos (valor por defecto o 0) el comportamiento es el de siempre.
+  val create "$ROOT/good"; expect_ok "sin minimos: se acepta como antes"
+  expect_has "...y el aviso dice que no se exigio ningun minimo" "No se exigio ningun minimo de registros"
+  val create "$ROOT/good" --min-vulnerability 0 --min-cpe-entry 0 --min-known-exploited 0; expect_ok "minimos explicitos a 0: sin minimo"
+  mk kev0m 5.6 "$GOOD_CHECKED" "$GOOD_MODIFIED" 1 1 0
+  val create "$ROOT/kev0m"; expect_ok "knownExploited = 0 sin minimo: sigue sin bloquear"
+  val create "$ROOT/kev0m" --min-known-exploited 1; expect_fail "knownExploited = 0 con minimo 1: se rechaza" "la tabla knownExploited tiene 0 registros, por debajo del minimo exigido (1)"
+  # Una tabla vacia sigue rechazandose con su motivo propio, aunque haya minimo.
+  mk zero_vul_m 5.6 "$GOOD_CHECKED" "$GOOD_MODIFIED" 0 2 1
+  val create "$ROOT/zero_vul_m" --min-vulnerability 5; expect_fail "vulnerability vacia con minimo: manda el motivo de tabla vacia" "la tabla vulnerability esta vacia"
+  # Tambien en verify, y con uso operativo (sin modo de pruebas).
+  copy good v_min; write_marker "$ROOT/v_min"
+  val verify "$ROOT/v_min" --min-vulnerability 3 --min-cpe-entry 2 --min-known-exploited 1; expect_ok "verify: recuentos iguales a los minimos"
+  val verify "$ROOT/v_min" $lo; expect_fail "verify: vulnerability por debajo del minimo" "la tabla vulnerability tiene 3 registros, por debajo del minimo exigido (4)"
+  valnt create "$ROOT/good" $lo; expect_fail "uso operativo (sin modo de pruebas): el minimo tambien rechaza" "por debajo del minimo exigido (4)"
+  # El minimo no cambia lo que --emit publica ni se publica nada si se rechaza.
+  rm -f "$ROOT/emit_min.txt"
+  val create "$ROOT/good" $lo --emit "$ROOT/emit_min.txt"
+  if [ "$rc" -eq 1 ] && [ ! -e "$ROOT/emit_min.txt" ]; then ok "rechazada por minimo: no se publica ningun --emit"; else bad "--emit tras rechazo por minimo"; fi
+  val create "$ROOT/good" --min-vulnerability 3 --emit "$ROOT/emit_min.txt"
+  if [ "$rc" -eq 0 ] && grep -q "^count_vulnerability=3$" "$ROOT/emit_min.txt" && [ "$(wc -l < "$ROOT/emit_min.txt" | tr -d ' ')" = 8 ]; then ok "aceptada con minimo: --emit sigue teniendo las 8 claves del contrato"; else bad "--emit con minimo"; fi
+  # Argumentos invalidos: codigo 2, nunca "valida".
+  local opt
+  for opt in --min-vulnerability --min-cpe-entry --min-known-exploited; do
+    raw --mode create --dir "$ROOT/good" --now-epoch "$NOW" --valid-hours 4 --job-start-epoch "$JOB_START" "$opt" abc; expect_usage "$opt no numerico" "$opt debe ser un entero"
+    raw --mode create --dir "$ROOT/good" --now-epoch "$NOW" --valid-hours 4 --job-start-epoch "$JOB_START" "$opt" -5; expect_usage "$opt negativo" "$opt debe ser un entero"
+    raw --mode create --dir "$ROOT/good" --now-epoch "$NOW" --valid-hours 4 --job-start-epoch "$JOB_START" "$opt" 03; expect_usage "$opt con cero a la izquierda (octal en bash)" "$opt debe ser un entero"
+    raw --mode create --dir "$ROOT/good" --now-epoch "$NOW" --valid-hours 4 --job-start-epoch "$JOB_START" "$opt" 1000000000; expect_usage "$opt de mas de 9 cifras" "$opt debe ser un entero"
+    raw --mode create --dir "$ROOT/good" --now-epoch "$NOW" --valid-hours 4 --job-start-epoch "$JOB_START" "$opt" ""; expect_usage "$opt vacio" "$opt debe ser un entero"
+    raw --mode create --dir "$ROOT/good" --now-epoch "$NOW" --valid-hours 4 --job-start-epoch "$JOB_START" "$opt"; expect_usage "$opt sin valor al final" "la opcion $opt requiere un valor"
+  done
+  # Los valores reales de la politica de CI (fase 2) como argumentos validos: la fixture sintetica no los alcanza.
+  val create "$ROOT/good" --min-vulnerability 200000 --min-cpe-entry 215000 --min-known-exploited 1400
+  expect_fail "los minimos de CI (200000 / 215000 / 1400) rechazan una base sintetica diminuta" "por debajo del minimo exigido (200000)"
+  # Un valor grande valido (9 cifras) no desborda la aritmetica de bash.
+  val create "$ROOT/good" --min-vulnerability 999999999; expect_fail "minimo de 9 cifras: se compara sin desbordar" "por debajo del minimo exigido (999999999)"
+}
+
+sec_plugin_propios() {
+  local d f
+  # Archivos que Dependency-Check crea en su directorio de datos: se reconocen por nombre y tipo, y se informa de ello.
+  copy good p_own
+  mkdir -p "$ROOT/p_own/cache"; echo x > "$ROOT/p_own/cache/dato"
+  for f in jsrepository.json jsrepository.json.properties publishedSuppressions.xml publishedSuppressions.xml.properties; do echo x > "$ROOT/p_own/$f"; done
+  val create "$ROOT/p_own"; expect_ok "archivos propios de Dependency-Check: se aceptan"
+  expect_has "...se informa de que se reconocen solo por nombre" "reconocidos solo por nombre (su contenido NO se valida): cache/ jsrepository.json jsrepository.json.properties publishedSuppressions.xml publishedSuppressions.xml.properties"
+  expect_not_has "...y ya no se avisan como no reconocidos" "inocuo): "
+  expect_not_has "...ni se piden revision humana" "REVISION HUMANA"
+  # Un archivo desconocido junto a ellos sigue avisandose.
+  echo x > "$ROOT/p_own/notas.txt"
+  val create "$ROOT/p_own"; expect_ok "propios + uno desconocido: no bloquea"
+  expect_has "...el desconocido sigue listado" "inocuo): notas.txt"
+  expect_not_has "...los propios no se listan como desconocidos" "inocuo): jsrepository"
+  # Nombres parecidos o de otro tipo NO se reconocen.
+  copy good p_fake
+  echo x > "$ROOT/p_fake/cache"                                            # "cache" como archivo, no directorio
+  mkdir -p "$ROOT/p_fake/jsrepository.json"                                # directorio con nombre de archivo
+  echo x > "$ROOT/p_fake/jsrepository.json.bak"
+  echo x > "$ROOT/p_fake/publishedSuppressions.xml.properties.old"
+  # "Cache" solo se distingue de "cache" en sistemas de archivos que diferencian mayusculas (no en Windows ni en macOS por defecto).
+  CASE_SENSITIVE=0
+  echo x > "$ROOT/p_fake/Cache"; [ "$(ls "$ROOT/p_fake" | grep -c -x -i cache)" = 2 ] && CASE_SENSITIVE=1
+  mkdir -p "$ROOT/p_fake/cache2"
+  val create "$ROOT/p_fake"; expect_ok "nombres parecidos o de otro tipo: no bloquean, pero se avisan"
+  expect_has "...'cache' como archivo se avisa" "inocuo): cache"
+  expect_has "...un directorio llamado jsrepository.json se avisa" "jsrepository.json/ (directorio)"
+  expect_has "...jsrepository.json.bak se avisa" "inocuo): jsrepository.json.bak"
+  expect_has "...una variante .old se avisa" "inocuo): publishedSuppressions.xml.properties.old"
+  if [ "$CASE_SENSITIVE" = 1 ]; then expect_has "...'Cache' (mayuscula) se avisa" "inocuo): Cache"
+  else skip "'Cache' (mayuscula) se avisa" "este sistema de archivos no distingue mayusculas"; fi
+  expect_has "...cache2/ se avisa" "cache2/ (directorio)"
+  expect_not_has "...y no se informa de ningun archivo propio reconocido" "reconocidos solo por nombre"
+  if [ "$CAN_SYMLINK" = 1 ]; then
+    copy good p_lnk; echo x > "$ROOT/p_lnk/real.txt"
+    ln -s "$ROOT/p_lnk/real.txt" "$ROOT/p_lnk/jsrepository.json"
+    val create "$ROOT/p_lnk"; expect_review "enlace simbolico con nombre de archivo propio: revision humana, no se reconoce" "jsrepository.json (enlace simbolico)"
+    copy good p_lnkd; mkdir -p "$ROOT/p_lnkd/destino"; ln -s "$ROOT/p_lnkd/destino" "$ROOT/p_lnkd/cache"
+    val create "$ROOT/p_lnkd"; expect_review "enlace simbolico llamado cache: revision humana, no se reconoce" "cache (enlace simbolico)"
+  else skip "enlaces simbolicos con nombre de archivo propio" "este sistema no permite crear enlaces simbolicos"; fi
+  # verify con archivos propios (ejecucion real del job de CI).
+  copy good p_ver; write_marker "$ROOT/p_ver"; mkdir -p "$ROOT/p_ver/cache"; echo x > "$ROOT/p_ver/publishedSuppressions.xml"
+  val verify "$ROOT/p_ver"; expect_ok "verify con archivos propios de Dependency-Check: se acepta"
+  expect_has "...y los reconoce por nombre" "reconocidos solo por nombre (su contenido NO se valida): cache/ publishedSuppressions.xml"
 }
 
 sec_entorno() {
@@ -603,6 +705,8 @@ run_section "archivo"            sec_archivo
 run_section "archivos-extra"     sec_archivos_extra
 run_section "internos"           sec_internos
 run_section "esquema"            sec_esquema
+run_section "minimos"            sec_minimos
+run_section "plugin-propios"     sec_plugin_propios
 run_section "entorno"            sec_entorno
 run_section "politica"           sec_politica
 run_section "parametros-prueba"  sec_parametros_prueba
