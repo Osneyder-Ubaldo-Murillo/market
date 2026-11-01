@@ -31,3 +31,10 @@ replay_pid*
 .idea/
 *.iml
 .vscode/settings.xml
+
+# Archivos locales que NO deben versionarse (ver market/docs/migrations/ y DIAGNOSTICO.md)
+# Salida generada de "mvnw help:effective-pom".
+market/effective-pom
+# Migraciones antiguas (V1 invalido, V2 con cuentas de contrasena conocida): nunca al repositorio ni a la imagen.
+# Las migraciones ACTIVAS viven en market/src/main/resources/db/schema/ y SI se versionan.
+market/src/main/resources/db/migration/

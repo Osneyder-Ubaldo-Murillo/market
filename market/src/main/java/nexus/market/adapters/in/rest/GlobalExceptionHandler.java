@@ -6,6 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
@@ -133,9 +135,42 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status).body(new ErrorResponse(code, message, LocalDateTime.now()));
     }
 
+    /**
+     * Error del cliente detectado por el propio framework y sin handler específico (Accept sin representación
+     * disponible, cabecera o parte obligatoria ausente, validación de parámetros...): conserva su estado 4xx y las
+     * cabeceras que el framework define (Allow, Accept...). El mensaje es fijo: el del framework puede contener nombres
+     * internos. Se fija el Content-Type para que un Accept no satisfacible no impida escribir la propia respuesta de error.
+     */
+    private static ResponseEntity<ErrorResponse> frameworkClientError(org.springframework.web.ErrorResponse cause) {
+        HttpStatusCode status = cause.getStatusCode();
+        String code;
+        String message;
+        switch (status.value()) {
+            case 400 -> {
+                code = "BAD_REQUEST";
+                message = "La petición es inválida o está incompleta.";
+            }
+            case 406 -> {
+                code = "NOT_ACCEPTABLE";
+                message = "El formato solicitado no está disponible; use application/json.";
+            }
+            default -> {
+                code = "REQUEST_ERROR";
+                message = "La petición no pudo procesarse.";
+            }
+        }
+        return ResponseEntity.status(status).headers(cause.getHeaders()).contentType(MediaType.APPLICATION_JSON)
+                .body(new ErrorResponse(code, message, LocalDateTime.now()));
+    }
+
     /** Cualquier error no previsto → 500 (con mensaje genérico). */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex) {
+        if (ex instanceof org.springframework.web.ErrorResponse framework
+                && framework.getStatusCode().is4xxClientError()) {
+            log.debug("Error del cliente detectado por el framework; se responde {}.", framework.getStatusCode(), ex);
+            return frameworkClientError(framework);
+        }
         if (isLockConflict(ex)) {
             // Conflicto de concurrencia identificable (bloqueo agotado o deadlock): reintentable, no un fallo interno.
             return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse("CONCURRENT_MODIFICATION",

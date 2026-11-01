@@ -3,6 +3,50 @@
 **Diseño, no implementado.** La pasarela actual (`LoggingPaymentServicePort`) es una **simulación** que
 solo escribe en el log.
 
+## Estado para producción real (resumen honesto)
+
+**Ni los pagos ni los envíos están listos para operar con un proveedor real.** Lo que existe y lo que falta:
+
+| Capacidad | Estado | Detalle |
+|---|---|---|
+| Un cobro por pedido dentro de la aplicación | **Hecho y probado** | Estado `PENDING_PAYMENT` validado y fila del pedido bloqueada (`SELECT ... FOR UPDATE`) antes de cobrar; la segunda confirmación ve `PAID` y falla antes de cobrar. Prueba MySQL real: 1 cobro, 1 factura. |
+| Id de transacción persistido | **Hecho** | `orders.payment_transaction_id` (migración `V3`); lo usan reembolsos y cancelación. |
+| Reembolso sin duplicados desde la aplicación | **Hecho y probado** | `PENDING` bloqueado antes de llamar; un fallo deja `FAILED` y se puede reprocesar; `PROCESSED` no. |
+| Anulación del cobro si falla la finalización | **Hecho (mejor esfuerzo)** | `confirmPayment` intenta reembolsar y audita `CONCILIACIÓN` si también falla. No es una garantía. |
+| Simuladores bloqueados en producción | **Hecho y probado** | Pago, envío y notificaciones por log: con `prod` no arranca sin autorización expresa (`PaymentProductionGuardTest`, `ShippingProductionGuardTest`, `NotificationProductionGuardTest`). |
+| Clave de idempotencia por intento de pago | **Pendiente** | Depende de la pasarela elegida (si la soporta y con qué ventana). |
+| Tabla de intentos de pago (*payment attempt*) | **Pendiente, requiere esquema** | Tabla nueva en `db/schema`; solo con aprobación (ver diseño más abajo). |
+| Reconciliación de intentos `PENDING` / cobros sin pedido pagado | **Pendiente** | Necesita la tabla de intentos y una consulta al proveedor. |
+| Webhooks del proveedor (duplicados, firma) | **Pendiente: no existe ningún endpoint** | Ver sección siguiente. |
+| Integración real de pasarela y de transportadora | **Pendiente: requisito externo** | Elegir proveedor, obtener credenciales y probar en su *sandbox*. |
+
+No hay ningún proveedor inventado ni llamadas externas en el código. **No declare pagos ni envíos como producción operativa
+hasta probarlos con un proveedor real en su entorno de pruebas (*sandbox*).**
+
+### Webhooks y callbacks (no implementados a propósito)
+
+La aplicación **no expone ningún endpoint de callback** y no se ha creado uno "genérico": su forma (cabecera de firma, algoritmo,
+ventana de tolerancia, identificador de evento, reintentos) la define el proveedor, y un endpoint sin verificación sería una
+puerta abierta para marcar pedidos como pagados. Cuando se elija proveedor, el endpoint debe cumplir como mínimo:
+
+1. **Autenticidad antes de nada:** verificar la firma del proveedor sobre el cuerpo **sin reinterpretar** (bytes crudos) con una
+   comparación en tiempo constante y rechazar con 401/403 sin procesar, y con una tolerancia de fecha corta contra *replays*.
+2. **Idempotencia por id de evento:** registrar el id del evento en la misma transacción que sus efectos (restricción de
+   unicidad); un evento repetido responde 200 sin repetir efectos.
+3. **No fiarse del contenido:** tratar el evento como una notificación y consultar el estado real al proveedor antes de pagar el
+   pedido; comprobar que importe, moneda y pedido coinciden con los esperados.
+4. **Estados:** solo transiciones válidas (`PENDING_PAYMENT` → `PAID`); un evento tardío sobre un pedido cancelado dispara un
+   reembolso o una revisión, nunca un pago silencioso.
+5. **Registro seguro:** auditar id de evento y resultado, sin cuerpo completo, sin cabeceras de firma y sin datos de tarjeta.
+6. **Ruta pública mínima:** una única ruta en `SecurityConfiguration` (hoy `denyAll` por defecto), con su propio límite de tasa.
+
+### Envíos
+
+`SimulatedShippingProviderPort` genera un seguimiento ficticio (`TRK-...`) y nunca se comunica con una transportadora. Para un
+proveedor real hace falta el mismo tipo de trabajo: elegir transportadora, credenciales, guía/etiqueta, cancelación y, si ofrece
+estados por callback, aplicar los mismos criterios de la sección anterior. Los estados del pedido y del envío ya se mantienen
+coherentes dentro de la aplicación (despachar el envío despacha el pedido).
+
 ## Qué ofrece hoy (y qué no)
 
 - Se calcula un `transactionId` determinista a partir del `orderId` (`TXN-` + UUID derivado). Por eso, en la

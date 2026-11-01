@@ -20,8 +20,8 @@ ejecutan con `./mvnw test` (ver la sección de pruebas); el número de pruebas c
 | Persistencia MySQL (repositorios JPA), esquema Flyway, bloqueos pesimistas de inventario, pedidos, devoluciones y reembolsos | Implementado |
 | Auditoría en MongoDB (perfil `prod`) o en log (desarrollo) | Implementado |
 | **Pagos** | **Simulados** (no cobran). Bloqueados con el perfil `prod` salvo autorización expresa |
-| **Envíos** | **Simulados** (número de seguimiento ficticio) |
-| **Notificaciones** | **Simuladas**: se escriben en el log (con el destinatario enmascarado) |
+| **Envíos** | **Simulados** (seguimiento ficticio, no crea envíos reales). Bloqueados con el perfil `prod` salvo autorización expresa |
+| **Notificaciones** | **Simuladas**: se escriben en el log (destinatario enmascarado) **con el contenido, incluidos los códigos de verificación y de recuperación**. Bloqueadas con el perfil `prod` salvo autorización expresa |
 | Integraciones reales (pasarela de pago, correo, SMS, transportadora) | Pendiente; los puertos y adaptadores son intercambiables |
 
 ### Limitaciones conocidas
@@ -33,7 +33,10 @@ ejecutan con `./mvnw test` (ver la sección de pruebas); el número de pruebas c
 - **Cancelar un pedido ya pagado** reembolsa el pago y repone el stock; si la pasarela falla, no se cancela nada.
 - **Devoluciones:** un pedido admite una devolución; los productos deben ser del pedido y lo devuelto (sumando líneas repetidas) no
   puede superar lo comprado. El carrito admite como máximo 1000 unidades por producto.
-- El límite de intentos de login es en memoria y por instancia.
+- Los límites de intentos y los contadores del bloqueo de cuentas son **en memoria y por instancia**: la aplicación se opera como una
+  sola instancia (como en `docker-compose.yml`) o con afinidad por IP en el balanceador. Detrás de un proxy inverso propio, declare
+  `TRUSTED_PROXIES` para que se use la IP real del cliente (`X-Forwarded-For`, solo desde esos proxies); por defecto no se confía
+  en ninguna cabecera. Ver `market/docs/ENTORNOS.md`.
 - Listados paginados (`?page=0&size=20`, máximo 100, total en la cabecera `X-Total-Count`): catálogo público
   (`GET /api/products`, con búsqueda por nombre `?q=`), pedidos (`GET /api/buyers/{id}/orders`) y facturas
   (`GET /api/buyers/{id}/invoices`) del comprador.
@@ -124,9 +127,11 @@ docker compose up -d
 curl http://localhost:8080/actuator/health
 ```
 
-El perfil `prod` **bloquea el pago simulado**: la aplicación no arranca hasta que declare
-`NEXUSMARKET_PAYMENT_SIMULATED_ALLOWED=true` en `.env`. Hágalo solo en un despliegue académico o de demostración; un
-despliegue real debe sustituir el adaptador por una pasarela real. Más detalles en `market/docs/ENTORNOS.md`.
+El perfil `prod` **bloquea los simuladores**: la aplicación no arranca hasta que declare en `.env`
+`NEXUSMARKET_PAYMENT_SIMULATED_ALLOWED=true` (pago), `NEXUSMARKET_SHIPPING_SIMULATED_ALLOWED=true` (envíos) y
+`NEXUSMARKET_NOTIFICATIONS_LOGGING_ALLOWED=true` (notificaciones por log, que escriben los códigos de verificación y de
+recuperación en claro). Hágalo solo en un despliegue académico o de demostración; un despliegue real debe sustituir cada adaptador
+por el de un proveedor real. Más detalles en `market/docs/ENTORNOS.md`.
 
 ## Cómo ejecutar las pruebas
 
@@ -138,7 +143,27 @@ cd market
 - Por defecto usa H2 en memoria y no necesita servicios externos.
 - Las pruebas `*MySqlTest` (Flyway + `validate`, concurrencia, pool) se **omiten** si no hay una base MySQL **desechable**:
   defina `NEXUS_TEST_MYSQL_URL`, `NEXUS_TEST_MYSQL_USER` y `NEXUS_TEST_MYSQL_PASSWORD`. Nunca las apunte a una base con datos.
-  El CI las ejecuta y comprueba que no queden omitidas.
+  El CI las ejecuta y comprueba que no queden omitidas. Una forma local y verificada (base en memoria, sin volúmenes):
+
+  ```bash
+  docker run -d --rm --name nexus-test-mysql --tmpfs /var/lib/mysql -p 127.0.0.1:3307:3306 \
+    -e MYSQL_ROOT_PASSWORD=<contraseña-aleatoria> -e MYSQL_DATABASE=nexus_test mysql:8.0 --max-connections=500
+  export NEXUS_TEST_MYSQL_URL=jdbc:mysql://127.0.0.1:3307/nexus_test NEXUS_TEST_MYSQL_USER=root
+  export NEXUS_TEST_MYSQL_PASSWORD=<la-misma-contraseña>
+  ./mvnw -B -ntp test
+  docker rm -f nexus-test-mysql
+  ```
+
+  `--max-connections=500` evita "Too many connections" cuando la suite completa abre varios contextos de Spring. En Windows con
+  Git Bash defina `MSYS_NO_PATHCONV=1` para `docker run`, pero no para `./mvnw`.
+- `scripts/ci/smoke-test-image.sh <imagen>` arranca la imagen con MySQL y MongoDB desechables y comprueba su salud; el CI lo ejecuta.
+
+## Cuentas de demostración antiguas (aviso)
+
+El archivo antiguo `db/migration/V2__seed.sql` sembraba cuentas con una contraseña conocida y **estuvo publicado en el historial de
+GitHub** (el commit puede seguir accesible por su hash). Trate esas credenciales como **expuestas**: no las use en ningún
+entorno y no existe ninguna cuenta semilla en las migraciones activas (`db/schema`). El administrador inicial se crea con el
+procedimiento de `market/docs/ADMIN_INICIAL_ACTIVACION.md`.
 
 ## Documentación de referencia
 
