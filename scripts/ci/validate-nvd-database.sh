@@ -13,9 +13,10 @@
 #     fechas y los recuentos que declara. Eso NO resuelve la autenticidad: un marcador forjado con un hash coincidente
 #     sigue sin ser confiable.
 #   - Archivos adicionales en el directorio de datos (ver "Archivos adicionales" en NVD_VALIDATOR.md).
-#   - Recuentos de filas: solo se exige >= 1 en vulnerability y cpeEntry. NO existe un umbral demostrado de "base
-#     completa"; los recuentos se muestran para calibrar con una base real. Un hash correcto solo prueba que el archivo
-#     no cambio, nunca que la base este completa.
+#   - Recuentos de filas: siempre se exige >= 1 en vulnerability y cpeEntry. Con --min-vulnerability, --min-cpe-entry y
+#     --min-known-exploited se exige ademas un MINIMO de filas por tabla (0 = sin minimo). Los minimos los fija quien
+#     llama, calibrados con bases reales (ver NVD_VALIDATOR.md): detectan una descarga truncada, NO demuestran que la base
+#     este completa. Un hash correcto solo prueba que el archivo no cambio, nunca que la base este completa.
 #
 # Modos:
 #   create : se ejecuta justo despues de la actualizacion y ANTES de escribir el marcador. Exige --job-start-epoch.
@@ -31,6 +32,7 @@
 #   garantiza el workflow, no este script.
 #
 # Parametros operativos:  --mode --dir --valid-hours --job-start-epoch --max-age-days --expected-version --emit
+#                         --min-vulnerability --min-cpe-entry --min-known-exploited
 #                         --java --h2-jar --core-jar   (y las variables JAVA, JAVA_HOME, M2_REPO)
 # Parametros EXCLUSIVOS DE PRUEBAS (se rechazan sin NVD_VALIDATOR_TEST=1):  --now-epoch --max-job-seconds
 #                         --expected-schema.  NVD_VALIDATOR_TEST=1 es un mecanismo de pruebas, NO una autenticacion ni
@@ -64,6 +66,9 @@ valid_hours=""                 # obligatorio: sin valor por defecto
 max_age_days=7
 max_job_seconds=21600          # limite de un job en runners hospedados de GitHub (6 h); exclusivo de pruebas si se cambia
 emit=""
+min_vulnerability=0            # minimos de filas por tabla: 0 = sin minimo (siempre se exige >= 1 en vulnerability y cpeEntry)
+min_cpe_entry=0
+min_known_exploited=0
 java_bin=""
 h2_jar=""
 core_jar=""
@@ -79,7 +84,7 @@ trap cleanup EXIT
 
 usage_error() {
   echo "::error::validate-nvd-database.sh: $*" >&2
-  echo "Uso: $0 --mode create|verify --dir DIR --valid-hours H [--job-start-epoch N] [--expected-version V] [--max-age-days D] [--emit FICHERO (solo create)] [--java RUTA] [--h2-jar RUTA] [--core-jar RUTA]" >&2
+  echo "Uso: $0 --mode create|verify --dir DIR --valid-hours H [--job-start-epoch N] [--expected-version V] [--max-age-days D] [--emit FICHERO (solo create)] [--min-vulnerability N] [--min-cpe-entry N] [--min-known-exploited N] [--java RUTA] [--h2-jar RUTA] [--core-jar RUTA]" >&2
   exit 2
 }
 
@@ -94,7 +99,7 @@ test_only() {
 while [ $# -gt 0 ]; do
   # Una opcion sin valor al final haria fallar "shift 2" y el bucle no terminaria nunca.
   case "$1" in
-    --mode|--dir|--expected-version|--job-start-epoch|--valid-hours|--max-age-days|--emit|--java|--h2-jar|--core-jar|--now-epoch|--max-job-seconds|--expected-schema)
+    --mode|--dir|--expected-version|--job-start-epoch|--valid-hours|--max-age-days|--emit|--min-vulnerability|--min-cpe-entry|--min-known-exploited|--java|--h2-jar|--core-jar|--now-epoch|--max-job-seconds|--expected-schema)
       [ $# -ge 2 ] || usage_error "la opcion $1 requiere un valor." ;;
   esac
   case "$1" in
@@ -105,6 +110,9 @@ while [ $# -gt 0 ]; do
     --valid-hours) valid_hours="${2:-}"; shift 2 ;;
     --max-age-days) max_age_days="${2:-}"; shift 2 ;;
     --emit) emit="${2:-}"; shift 2 ;;
+    --min-vulnerability) min_vulnerability="${2:-}"; shift 2 ;;
+    --min-cpe-entry) min_cpe_entry="${2:-}"; shift 2 ;;
+    --min-known-exploited) min_known_exploited="${2:-}"; shift 2 ;;
     --java) java_bin="${2:-}"; shift 2 ;;
     --h2-jar) h2_jar="${2:-}"; shift 2 ;;
     --core-jar) core_jar="${2:-}"; shift 2 ;;
@@ -143,6 +151,9 @@ fi
 [ -n "$valid_hours" ] || usage_error "falta --valid-hours (obligatorio, sin valor por defecto): use 0 para exigir que ESTA ejecucion actualizo la base, o N > 0 para aceptar una actualizacion omitida por la ventana de Dependency-Check."
 [[ "$valid_hours" =~ ^(0|[1-9][0-9]{0,3})$ ]] || usage_error "--valid-hours debe ser un entero sin ceros a la izquierda (0 a 9999): '$valid_hours'"
 [[ "$max_age_days" =~ ^(0|[1-9][0-9]{0,4})$ ]] || usage_error "--max-age-days debe ser un entero sin ceros a la izquierda: '$max_age_days'"
+for opt in min_vulnerability min_cpe_entry min_known_exploited; do
+  [[ "${!opt}" =~ ^(0|[1-9][0-9]{0,8})$ ]] || usage_error "--${opt//_/-} debe ser un entero sin ceros a la izquierda (0 a 999999999; 0 = sin minimo): '${!opt}'"
+done
 [[ "$max_job_seconds" =~ ^[1-9][0-9]{0,7}$ ]] || usage_error "--max-job-seconds debe ser un entero positivo sin ceros a la izquierda: '$max_job_seconds'"
 [ -n "$now_epoch" ] || now_epoch="$(date -u +%s)"
 [[ "$now_epoch" =~ ^[1-9][0-9]{0,9}$ ]] || usage_error "la fecha actual (--now-epoch / date) no es un entero valido: '$now_epoch'"
@@ -179,6 +190,7 @@ size_of() {
 }
 
 echo "Politica efectiva: modo=$mode valid-hours=$valid_hours max-age-days=$max_age_days expected-version=$expected_version"
+echo "Minimos de registros (0 = sin minimo; vulnerability y cpeEntry exigen siempre >= 1): vulnerability=$min_vulnerability cpeEntry=$min_cpe_entry knownExploited=$min_known_exploited"
 if [ "$valid_hours" -gt 0 ]; then
   warn "valid-hours=$valid_hours: una actualizacion OMITIDA por la ventana de Dependency-Check se acepta; esto NO demuestra que la ejecucion actual haya actualizado la base. Use 0 (y -DnvdValidForHours=0 en el plugin) para exigirlo."
 fi
@@ -203,20 +215,30 @@ actual_size="$(size_of "$db")" || usage_error "no se pudo calcular el tamano de 
 echo "odc.mv.db: $actual_size bytes, sha256=$actual_sha"
 
 # ---------------------------------------------------------------- archivos adicionales
-# Clasificacion (ver NVD_VALIDATOR.md): esperados (odc.mv.db y el marcador) | a revisar por una persona (cualquier otro
-# archivo "odc.*", enlaces simbolicos) | no reconocidos (se listan; no se ha verificado que sean inocuos).
-review=(); unknown=()
+# Clasificacion (ver NVD_VALIDATOR.md): esperados (odc.mv.db y el marcador) | propios de Dependency-Check, reconocidos SOLO
+# por nombre y tipo (su contenido no se valida) | a revisar por una persona (cualquier otro archivo "odc.*", enlaces
+# simbolicos) | no reconocidos (se listan; no se ha verificado que sean inocuos).
+review=(); unknown=(); plugin_own=()
 while IFS= read -r -d '' p; do
   name="${p##*/}"
   case "$name" in odc.mv.db|"$MARKER_NAME") continue ;; esac
   if [ -L "$p" ]; then review+=("$name (enlace simbolico)")
   elif [[ "$name" == odc.* ]]; then review+=("$name")
-  elif [ -d "$p" ]; then unknown+=("$name/ (directorio)")
-  else unknown+=("$name"); fi
+  elif [ -d "$p" ]; then
+    if [ "$name" = cache ]; then plugin_own+=("cache/"); else unknown+=("$name/ (directorio)"); fi
+  else
+    case "$name" in
+      jsrepository.json|jsrepository.json.properties|publishedSuppressions.xml|publishedSuppressions.xml.properties) plugin_own+=("$name") ;;
+      *) unknown+=("$name") ;;
+    esac
+  fi
 done < <(find "$dir" -mindepth 1 -maxdepth 1 -print0 2>/dev/null | sort -z)
 for n in "${review[@]+"${review[@]}"}"; do
   warn "REVISION HUMANA: '$n' no deberia quedar tras una actualizacion limpia (artefacto de H2 o de Dependency-Check: trazas de error, bloqueo de actualizacion o fichero temporal)."
 done
+if [ "${#plugin_own[@]}" -gt 0 ]; then
+  echo "Archivos propios de Dependency-Check, reconocidos solo por nombre (su contenido NO se valida): ${plugin_own[*]}"
+fi
 for n in "${unknown[@]+"${unknown[@]}"}"; do
   warn "Archivo no reconocido en el directorio de datos (no se valida; no se ha verificado que sea inocuo): $n"
 done
@@ -414,12 +436,15 @@ else
     [ "$d" -le "$max_age_days" ] || fail "nvd.api.last.checked tiene $d dias (maximo $max_age_days): los datos de NVD estan desactualizados aunque el marcador sea reciente."
   fi
 
+  declare -A min_rows=([vulnerability]="$min_vulnerability" [cpeEntry]="$min_cpe_entry" [knownExploited]="$min_known_exploited")
   for table in vulnerability cpeEntry knownExploited; do
     n="${v[count.$table]:-MISSING}"
     if ! [[ "$n" =~ ^[0-9]+$ ]]; then
       fail "no se pudo contar la tabla $table ($n)."
     elif [ "$table" != knownExploited ] && [ "$n" -lt 1 ]; then
       fail "la tabla $table esta vacia."
+    elif [ "$n" -lt "${min_rows[$table]}" ]; then
+      fail "la tabla $table tiene $n registros, por debajo del minimo exigido (${min_rows[$table]}): descarga incompleta o truncada."
     fi
   done
 
@@ -433,7 +458,7 @@ else
   fi
 
   echo "Marcadores internos: esquema=${v[schema_version]:-} last.checked=${v[nvd.api.last.checked]:-} last.modified=${v[nvd.api.last.modified]:-}"
-  echo "Recuentos (informativos, sin umbral demostrado): vulnerability=${v[count.vulnerability]:-?} cpeEntry=${v[count.cpeEntry]:-?} knownExploited=${v[count.knownExploited]:-?}"
+  echo "Recuentos: vulnerability=${v[count.vulnerability]:-?} cpeEntry=${v[count.cpeEntry]:-?} knownExploited=${v[count.knownExploited]:-?}"
   if [ "$valid_hours" -eq 0 ]; then
     echo "Politica de actualizacion: se exige que nvd.api.last.checked sea posterior al inicio (valid-hours=0)."
   else
@@ -476,6 +501,10 @@ if [ -n "$emit" ] && [ "$mode" = create ] && [ "$internals_ok" -eq 1 ]; then
   [ -s "$emit_abs" ] || { rm -f -- "$emit_abs"; usage_error "el archivo --emit quedo vacio; se elimina."; }
 fi
 echo "Resultado: ACEPTADA por las comprobaciones estructurales del validador."
-echo "AVISO: esto NO demuestra que la base NVD este completa. No hay un umbral demostrado de registros, y el SHA-256 solo prueba que el archivo no ha cambiado."
+if [ "$min_vulnerability" -eq 0 ] && [ "$min_cpe_entry" -eq 0 ] && [ "$min_known_exploited" -eq 0 ]; then
+  echo "AVISO: esto NO demuestra que la base NVD este completa. No se exigio ningun minimo de registros, y el SHA-256 solo prueba que el archivo no ha cambiado."
+else
+  echo "AVISO: esto NO demuestra que la base NVD este completa. Los minimos de registros solo detectan una descarga truncada, y el SHA-256 solo prueba que el archivo no ha cambiado."
+fi
 [ -n "$test_only_used" ] && echo "AVISO: se usaron parametros exclusivos de pruebas ($test_only_used ): este resultado NO sirve para aprobar una base real."
 exit 0

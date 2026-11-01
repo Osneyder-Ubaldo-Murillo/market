@@ -1,8 +1,8 @@
 # Validador de la base NVD de Dependency-Check 12.2.2
 
 `validate-nvd-database.sh` comprueba si una base H2 de Dependency-Check (`odc.mv.db`) puede considerarse válida para
-transferirla (caché de Actions u otro medio). **Integración en CI: fase 1 (observación)**: los workflows lo ejecutan e
-informan su resultado, pero no bloquean (ver «Integración en CI» más abajo y `market/docs/CI_CD.md`).
+transferirla (caché de Actions u otro medio). **Integración en CI: fase 2 (bloquea)**: los workflows lo ejecutan y, si no
+aprueba la base, el job falla (ver «Integración en CI» más abajo y `market/docs/CI_CD.md`).
 
 ## Qué comprueba
 
@@ -46,16 +46,16 @@ finales de línea LF (un marcador con CRLF se rechaza):
 | `update_started_epoch` | `--emit` (eco de `--job-start-epoch`, ya validado) | segundos UTC del inicio de la actualización |
 | `odc_sha256`, `odc_size_bytes` | `--emit` | SHA-256 y tamaño de `odc.mv.db` en el momento de validarlo |
 | `nvd_api_last_checked`, `nvd_api_last_modified` | `--emit` | valor literal de esas propiedades internas |
-| `count_vulnerability`, `count_cpeEntry`, `count_knownExploited` | `--emit` | `SELECT COUNT(*)` de cada tabla (sin umbral: solo informativos y contrastables) |
+| `count_vulnerability`, `count_cpeEntry`, `count_knownExploited` | `--emit` | `SELECT COUNT(*)` de cada tabla (se contrastan con la base y, si se pasan `--min-*`, con los mínimos) |
 | `dependency_check_version` | workflow | versión de la herramienta (`12.2.2`) |
 | `completed_epoch`, `completed_at` | workflow | fin de la actualización (`date -u +%s` y `+%Y-%m-%dT%H:%M:%SZ`) |
 | `run_id`, `commit` | workflow | `GITHUB_RUN_ID` y `GITHUB_SHA` (40 hexadecimales) |
 
 El marcador final = lo que escribe `--emit` (8 claves) + las 5 del workflow. Eso es lo que ejercitan las pruebas
-(`ida-y-vuelta`). Desde la fase 1 de la integración, el workflow de actualización escribe el marcador de 13 claves **solo si
-el validador aprueba la base**; si no, escribe el de 5 claves de siempre (que este contrato rechaza) y lo declara como «SIN
-verificar». Una caché publicada antes de la integración tiene el marcador de 5 claves y `verify` la rechaza («falta la clave …»)
-hasta que se republique.
+(`ida-y-vuelta`). Desde la fase 2, el workflow de actualización escribe siempre el marcador de 13 claves y **solo si el
+validador aprueba la base**: si la rechaza (o no puede ejecutarse), el run falla antes de escribir el marcador y de guardar la
+caché, y se conserva la anterior. Una caché publicada antes de la fase 2 con el marcador de 5 claves (fase 1, base no
+verificada) la rechaza `verify` («falta la clave …»); las anteriores a la integración también.
 
 ## Códigos de salida
 
@@ -73,7 +73,7 @@ Solo el `0` es una aprobación. **No existe ningún modo que apruebe una base si
 
 | Tipo | Parámetros |
 |---|---|
-| **Operativos** | `--mode`, `--dir`, `--valid-hours` (**obligatorio**), `--job-start-epoch` (obligatorio en `create`), `--max-age-days` (7), `--expected-version` (12.2.2), `--emit` (solo `create`), `--java`, `--h2-jar`, `--core-jar`; variables `JAVA`, `JAVA_HOME`, `M2_REPO` |
+| **Operativos** | `--mode`, `--dir`, `--valid-hours` (**obligatorio**), `--job-start-epoch` (obligatorio en `create`), `--max-age-days` (7), `--expected-version` (12.2.2), `--emit` (solo `create`), `--min-vulnerability`, `--min-cpe-entry`, `--min-known-exploited` (0 = sin mínimo), `--java`, `--h2-jar`, `--core-jar`; variables `JAVA`, `JAVA_HOME`, `M2_REPO` |
 | **Exclusivos de pruebas** | `--now-epoch`, `--max-job-seconds`, `--expected-schema` |
 
 - Los parámetros exclusivos de pruebas se **rechazan con código 2** si no está `NVD_VALIDATOR_TEST=1`.
@@ -84,7 +84,13 @@ Solo el `0` es una aprobación. **No existe ningún modo que apruebe una base si
 - Los parámetros operativos pueden relajar el resultado (`--max-age-days`, `--valid-hours`, rutas de Java y jars). No se
   restringen, porque tienen usos documentados, pero la salida muestra siempre la **política efectiva**
   (`valid-hours`, `max-age-days`) y el **entorno** (`java`, `h2`, `core`) para que se vea en el log.
-- Los valores numéricos se validan sin ceros a la izquierda (bash los leería como octal) y con una longitud máxima.
+- Los valores numéricos se validan sin ceros a la izquierda (bash los leería como octal) y con una longitud máxima
+  (los `--min-*`, hasta 9 cifras).
+- **Mínimos de registros (`--min-vulnerability`, `--min-cpe-entry`, `--min-known-exploited`):** por defecto 0 = sin mínimo
+  (siempre se exige `≥ 1` en `vulnerability` y `cpeEntry`). Si el recuento queda por debajo, la base se rechaza («la tabla X
+  tiene N registros, por debajo del mínimo exigido (M): descarga incompleta o truncada»); una tabla vacía sigue rechazándose
+  con su motivo propio. Se aplican en `create` y en `verify`, se muestran en la política efectiva y el aviso final distingue si se
+  exigió algún mínimo. No cambian lo que publica `--emit`.
 - Una opción sin valor al final se rechaza (antes hacía fallar `shift 2` y el script no terminaba).
 
 ## Política de actualización: `--valid-hours` (obligatorio)
@@ -128,24 +134,30 @@ Qué se **hace**:
 | Categoría | Qué es | Efecto |
 |---|---|---|
 | Esperados | `odc.mv.db` y `nexusmarket-nvd-update.properties` | sin aviso |
+| Propios de Dependency-Check, **reconocidos solo por nombre y tipo** | el directorio `cache/` y los archivos `jsrepository.json`, `jsrepository.json.properties`, `publishedSuppressions.xml` y `publishedSuppressions.xml.properties` | se informa en una línea («reconocidos solo por nombre (su contenido NO se valida)»); no avisan ni bloquean |
 | **Exigen revisión humana** | cualquier otro archivo `odc.*` (p. ej. `odc.trace.db`, `odc.update.lock`, `odc.lock.db`, `odc.mv.db.tempFile`, `odc.temp.db`) y los enlaces simbólicos | aviso `REVISION HUMANA`; si el resto es válido, **código 3** y no se emite nada; si hay otro rechazo, manda el código 1 y el archivo sigue listado |
 | No reconocidos | cualquier otro archivo, **incluidos los ocultos**, y los directorios | se listan en un aviso («no se ha verificado que sea inocuo»); no bloquean |
 
-No se ha verificado qué archivos deja Dependency-Check en una actualización limpia: por eso los no reconocidos no se
-rechazan, y por eso los `odc.*` se tratan como «revisar» y no como «base dañada». **Pendiente de comprobar con una base
-real**: si una actualización correcta deja alguno de ellos, y qué archivos adicionales (suppressions hospedados,
-RetireJS, caché de JCS) aparecen en el directorio de datos. Si resultaran legítimos, habría que moverlos de categoría con
-evidencia, no por suposición.
+**Evidencia real:** en dos actualizaciones completas en `ubuntu-latest` (runs 5 y 6 de *Actualizar base de datos NVD*, 2026-11-01)
+el directorio de datos contenía, además de `odc.mv.db` y el marcador, exactamente esos cinco elementos (por sus nombres, relacionados con suppressions
+hospedados, RetireJS y la caché del plugin; su origen no se ha verificado más allá de eso) y ningún archivo `odc.*`. Por eso se reconocen. El reconocimiento es **solo por
+nombre y tipo**: un enlace simbólico con ese nombre sigue exigiendo revisión humana, y un directorio llamado `jsrepository.json`,
+un archivo llamado `cache`, o variantes (`.bak`, `.old`, otra capitalización) siguen avisándose como no reconocidos. **No se
+valida el contenido de ninguno** ni se ha comprobado que `cache/` sea inocuo más allá de ser lo que el plugin crea. Qué otros
+archivos puede dejar Dependency-Check en otras circunstancias sigue sin conocerse: los no reconocidos no se rechazan, y los
+`odc.*` se tratan como «revisar» y no como «base dañada».
 
 ## Qué NO demuestra (limitaciones)
 
 1. **No demuestra que la base esté completa.** Solo exige los marcadores que Dependency-Check escribe al final de una
    actualización completa (lectura del bytecode de 12.2.2) y que haya datos. Una base parcial a la que alguien añadiera
    a mano esos marcadores pasaría.
-2. **No hay umbral mínimo de registros.** Solo se exige `vulnerability ≥ 1` y `cpeEntry ≥ 1`. No existe un umbral
-   demostrado (NVD anunció 416.289 registros, pero no se sabe cuántas filas de `vulnerability` produce cada uno) y
-   cualquier umbral sería inventado. Los recuentos se muestran y se guardan en el marcador para **calibrarlos con la
-   primera base completa real**.
+2. **Los mínimos de registros no demuestran que la base esté completa.** Solo detectan una descarga muy truncada. Los valores de CI
+   (`vulnerability` 200 000, `cpeEntry` 215 000, `knownExploited` 1 400) son ~80 % de lo observado en dos ejecuciones reales del
+   mismo día (246 568 / 268 022 / 1 766, idénticos en ambas): es una **decisión de este proyecto con una muestra pequeña**, no un
+   valor demostrado. Una base con el 85 % de los registros pasaría. NVD solo crece: hay que revisarlos de vez en cuando, y si
+   los recuentos reales variaran más de lo previsto, recalibrarlos. Sin `--min-*` solo se exige `≥ 1` en `vulnerability` y
+   `cpeEntry`.
 3. **Un SHA-256 correcto solo prueba que el archivo no cambió**, nunca que sea completo ni correcto. Es integridad, no
    autenticidad: el marcador viaja dentro de la misma caché, así que quien pueda escribirla puede forjar base y marcador.
    `run_id` y `commit` son datos declarativos; no se verifica su procedencia.
@@ -175,18 +187,23 @@ evidencia, no por suposición.
 
 ## Integración en CI
 
-**Fase 1 (observación, vigente):**
+**Fase 2 (bloquea, vigente):**
 - `update-dependency-check-data.yml`: tras la actualización ejecuta `--mode create --valid-hours 4 --job-start-epoch <inicio capturado
-  justo antes de update-only> --emit` y compone el marcador (13 claves si el validador aprobó; 5 si no). Las ejecuciones desde una rama
-  que no es `main` no guardan caché y se detienen si no hay una base previa que restaurar.
-- `ci.yml`: en el job `dependency-check`, `--mode verify --valid-hours 4` antes del análisis; anota el resultado y no bloquea.
+  justo antes de update-only> --emit` con los mínimos `NVD_MIN_*`. Solo con código 0 (y `--emit` no vacío) escribe el marcador de
+  13 claves; con cualquier otro resultado **el run falla antes de escribir el marcador y de guardar la caché**, y se conserva la
+  anterior (el CI la sigue usando mientras tenga como máximo 7 días). Las ejecuciones desde una rama que no es `main` no guardan caché
+  y se detienen si no hay una base previa que restaurar.
+- `ci.yml`: en el job `dependency-check`, `--mode verify --valid-hours 4` con los mismos mínimos antes del análisis; con los códigos
+  1, 2 y 3 el job **falla**. Exige el marcador de 13 claves (el de 5 claves se rechaza).
+- Los mínimos (`NVD_MIN_VULNERABILITY=200000`, `NVD_MIN_CPE_ENTRY=215000`, `NVD_MIN_KNOWN_EXPLOITED=1400`) están definidos en el `env` de
+  **ambos** workflows y deben coincidir; no hay una fuente única.
 - `nvd-validator-tests.yml`: la suite en Linux cuando cambian los archivos del validador.
 - Se muestra la salida del validador sin los prefijos `::error::`/`::warning::` y se emite **una** anotación por resultado: aviso
-  si lo rechaza (código 1), error si no puede ejecutarse o exige revisión (códigos 2 y 3), aviso informativo si lo aprueba. Un
-  error inesperado no se oculta, pero tampoco bloquea durante la observación.
+  informativo si lo aprueba, error en cualquier otro caso (y el paso falla). El resumen del run incluye el código, los mínimos y la
+  salida completa.
 
-**Fase 2 (pendiente, PR aparte):** quitar la tolerancia (el job fallaría con los códigos 1, 2 y 3), exigir el marcador de 13 claves en
-`ci.yml`, y calibrar con los recuentos reales el umbral mínimo de registros, que hoy no existe. Antes hace falta revisar una base real.
+**Fase 1 (observación, sustituida por la fase 2):** el validador solo informaba y las bases rechazadas se publicaban con un marcador
+de 5 claves («SIN verificar»). Quedaron en `main` desde el PR #3 hasta el PR de la fase 2.
 
 **Política `--valid-hours` y `-DnvdValidForHours`** (hallazgos de la lectura del bytecode de `NvdApiDataSource` 12.2.2; no se ha
 ejecutado contra NVD): `processApi` omite la actualización solo si hay datos, existe `nvd.api.last.checked`, el valor es **mayor
@@ -194,7 +211,7 @@ que 0** y la última comprobación fue hace menos de esas horas; el valor por de
 omite, pide a la API solo lo modificado desde `nvd.api.last.modified` (ventana de 120 días como máximo, páginas de 2000, 50 peticiones
 cada 30 s con clave). KEV tiene su propia ventana (`kev.check.validforhours`, 24). Con 4 h, el run diario no se omite nunca; con 0 solo
 cambiaría una reejecución manual poco después de una actualización correcta (haría 1 o 2 peticiones más). No hay medición real de
-duración ni de consumo. Por eso la fase 1 usa `--valid-hours 4` y no toca el plugin.
+duración ni de consumo. Por eso se mantiene `--valid-hours 4` en la fase 2 y no se toca el plugin.
 
 ## Pruebas
 
@@ -203,8 +220,9 @@ bash scripts/ci/test/test-validate-nvd-database.sh            # suite completa
 bash scripts/ci/test/test-validate-nvd-database.sh 'emit|temporales'   # solo algunas secciones
 ```
 
-Secciones: `positivo`, `archivo`, `archivos-extra`, `internos`, `esquema`, `entorno`, `politica`, `parametros-prueba`,
-`integridad`, `orden`, `emit`, `temporales`, `file-only`, `verify`, `parcial`, `ida-y-vuelta`. Crean bases H2
+Secciones: `positivo`, `archivo`, `archivos-extra`, `internos`, `esquema`, `minimos`, `plugin-propios`, `entorno`,
+`politica`, `parametros-prueba`, `integridad`, `orden`, `emit`, `temporales`, `file-only`, `verify`, `parcial`,
+`ida-y-vuelta`. Crean bases H2
 sintéticas (`NvdFixtureBuilder.java`, con el `data/initialize.sql` real del jar core) en un directorio temporal y
 comprueban, para cada caso negativo, el código de salida **y el motivo** del rechazo. Las funciones de la suite activan
 `NVD_VALIDATOR_TEST=1` (`val`, `raw`) o lo quitan (`valnt`, `rawnt`) para probar tanto el rechazo como el uso operativo.
@@ -214,11 +232,13 @@ fechas ausentes, inválidas, futuras e incoherentes y sus límites exactos; `--v
 parámetros de pruebas sin `NVD_VALIDATOR_TEST=1`; fallos y salidas inválidas de `sha256sum` y `wc` (también en
 `verify`) sin que se publique ningún marcador; el orden «marcador antes de H2» (con un Java inexistente: se rechaza
 sin llegar a pedirlo); archivos adicionales (ocultos, `odc.trace.db`, directorios); marcador con claves ausentes,
-duplicadas, desconocidas, CRLF, fechas imposibles o valores que no coinciden con la base; base antigua con marcador
+duplicadas, desconocidas, CRLF, fechas imposibles o valores que no coinciden con la base; mínimos de registros (límite
+exacto, un registro por debajo, tablas vacías, `create`/`verify`/uso operativo, argumentos inválidos, que un rechazo no publique
+`--emit`); archivos propios de Dependency-Check frente a nombres parecidos, de otro tipo o enlaces simbólicos; base antigua con marcador
 reciente (también falsificando el inicio); `--emit` previo, dentro de `--dir`, directorio, modo `verify`; y fallos
 simulados de `mktemp`, `cp` y `mv` mediante «shims» antepuestos al `PATH`.
 
 **No simulado:** un error de escritura real del temporal de `--emit` (disco lleno) y los enlaces simbólicos en sistemas
 que no los permiten (se marcan como omitidas). **Linux:** la suite se ejecutó en un contenedor `eclipse-temurin:17-jdk-jammy`
-(sin red): 257 pasadas, 0 fallidas, 1 omitida (disco lleno); en Windows con Git Bash: 253 pasadas, 4 omitidas (los enlaces
-simbólicos no se pueden crear). Tampoco se ha probado con una base NVD real.
+(sin red): 317 pasadas, 0 fallidas, 1 omitida (disco lleno); en Windows con Git Bash: 310 pasadas, 6 omitidas (4 por enlaces
+simbólicos que no se pueden crear, 1 por un sistema de archivos que no distingue mayúsculas y 1 por el disco lleno). Tampoco se ha probado con una base NVD real.
