@@ -1,0 +1,6185 @@
+{
+  "openapi" : "3.1.0",
+  "info" : {
+    "title" : "NexusMarket API",
+    "description" : "API REST de **NexusMarket**, un marketplace que intermedia entre compradores y vendedores.\n\n**Cómo probarla desde esta página**\n1. Ejecute `POST /api/auth/login` con un correo y una contraseña y copie el `token` de la respuesta.\n2. Pulse **Authorize**, pegue el token (sin escribir `Bearer`) y confirme.\n3. Ya puede ejecutar los endpoints protegidos con el rol de esa cuenta.\n\n**Roles:** COMPRADOR, VENDEDOR, OPERADOR logístico, ADMIN y SUPERVISOR (solo lectura). Cada operación indica\nquién puede usarla. Además del rol, un comprador o un vendedor solo accede a sus propios recursos.\n\n**Errores:** todos usan el mismo formato `{code, message, timestamp}`. 400 cuerpo inválido, 401 sin token o token\ninválido, 403 sin permiso, correo sin verificar o cuenta bloqueada, 404 no existe, 409 estado o duplicado,\n429 demasiados intentos y 503 base de datos no disponible.\n\n**Importante:** el pago, el envío y las notificaciones son **simulados**: no cobran, no crean envíos reales ni\nenvían correos (los códigos de verificación se escriben en el log de la aplicación).\n",
+    "version" : "1.0.0"
+  },
+  "servers" : [ {
+    "url" : "http://localhost:8080",
+    "description" : "Local (Docker Compose)"
+  } ],
+  "security" : [ {
+    "bearerAuth" : [ ]
+  } ],
+  "tags" : [ {
+    "name" : "Devoluciones y reembolsos",
+    "description" : "Solicitud, aprobación y proceso de devoluciones y de sus reembolsos."
+  }, {
+    "name" : "Bodegas",
+    "description" : "Bodegas del marketplace y de los vendedores."
+  }, {
+    "name" : "Autenticación y cuentas",
+    "description" : "Registro, verificación de correo, inicio de sesión, recuperación de contraseña y alta de personal interno."
+  }, {
+    "name" : "Catálogo y productos",
+    "description" : "Catálogo público y gestión de productos por el vendedor."
+  }, {
+    "name" : "Logística - operador",
+    "description" : "Gestión de pedidos del operador logístico: listado, detalle, recogidas y novedades."
+  }, {
+    "name" : "Logística - supervisión",
+    "description" : "Panel de supervisión de pedidos y atención de novedades (SUPERVISOR y ADMIN)."
+  }, {
+    "name" : "Inventario",
+    "description" : "Existencias de un producto en una bodega. Las gestiona el vendedor dueño del producto."
+  }, {
+    "name" : "Carrito",
+    "description" : "Carrito del comprador. Cada comprador tiene uno solo y puede mezclar productos de varios vendedores."
+  }, {
+    "name" : "Envíos",
+    "description" : "Envío de un pedido. Lo gestiona el operador logístico."
+  }, {
+    "name" : "Usuarios",
+    "description" : "Consulta y estado de las cuentas, aprobación de vendedores y direcciones del comprador."
+  }, {
+    "name" : "Facturas",
+    "description" : "Facturas de los pedidos pagados."
+  }, {
+    "name" : "Reportes",
+    "description" : "Reportes administrativos de solo lectura."
+  }, {
+    "name" : "Catálogo y productos",
+    "description" : "Catálogo público y gestión de productos del vendedor."
+  }, {
+    "name" : "Pedidos y pagos",
+    "description" : "Creación, pago (simulado), despacho, entrega y cancelación de pedidos."
+  } ],
+  "paths" : {
+    "/api/products/{productId}" : {
+      "get" : {
+        "tags" : [ "Catálogo y productos" ],
+        "summary" : "Consultar un producto publicado",
+        "description" : "Pública. Solo devuelve productos publicados.",
+        "operationId" : "findById",
+        "parameters" : [ {
+          "name" : "productId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProductResponse"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ ]
+      },
+      "put" : {
+        "tags" : [ "Catálogo y productos" ],
+        "summary" : "Editar el nombre y la descripción",
+        "description" : "Solo VENDEDOR dueño.",
+        "operationId" : "update",
+        "parameters" : [ {
+          "name" : "productId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateProductRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProductResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/products/{productId}/price" : {
+      "put" : {
+        "tags" : [ "Catálogo y productos" ],
+        "summary" : "Cambiar el precio",
+        "description" : "Solo VENDEDOR dueño.",
+        "operationId" : "updatePrice",
+        "parameters" : [ {
+          "name" : "productId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdatePriceRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/logistics/orders/{reference}/operator" : {
+      "put" : {
+        "tags" : [ "Logística - operador" ],
+        "summary" : "Asignar el operador de un pedido",
+        "description" : "Solo ADMIN. El operador se indica por correo, documento o UUID. El pedido debe estar PAID o DISPATCHED y la cuenta debe ser un operador logístico activo (400 INVALID_OPERATOR). Reasignar conserva el historial.",
+        "operationId" : "assignOperator",
+        "parameters" : [ {
+          "name" : "reference",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AssignOperatorRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/OrderDetailResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inventory/{inventoryId}/quantity" : {
+      "put" : {
+        "tags" : [ "Inventario" ],
+        "summary" : "Fijar la cantidad disponible",
+        "description" : "Solo VENDEDOR dueño.",
+        "operationId" : "adjust",
+        "parameters" : [ {
+          "name" : "inventoryId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/QuantityRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/buyers/{buyerId}/cart/items/{productId}" : {
+      "put" : {
+        "tags" : [ "Carrito" ],
+        "summary" : "Cambiar la cantidad de un producto del carrito",
+        "description" : "Solo COMPRADOR dueño.",
+        "operationId" : "updateQuantity",
+        "parameters" : [ {
+          "name" : "buyerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "productId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/QuantityRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete" : {
+        "tags" : [ "Carrito" ],
+        "summary" : "Quitar un producto del carrito",
+        "description" : "Solo COMPRADOR dueño.",
+        "operationId" : "removeItem",
+        "parameters" : [ {
+          "name" : "buyerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "productId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/warehouses/marketplace" : {
+      "post" : {
+        "tags" : [ "Bodegas" ],
+        "summary" : "Crear una bodega del marketplace",
+        "description" : "Solo ADMIN.",
+        "operationId" : "createMarketplace",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/WarehouseCreateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Bodega creada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WarehouseResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/supervision/incidents/{incidentId}/responsible" : {
+      "post" : {
+        "tags" : [ "Logística - supervisión" ],
+        "summary" : "Asignar el responsable del seguimiento de una novedad",
+        "description" : "SUPERVISOR y ADMIN. El responsable (correo, documento o UUID) debe ser personal logístico, supervisor o administrador activo (400 INVALID_RESPONSIBLE).",
+        "operationId" : "responsible",
+        "parameters" : [ {
+          "name" : "incidentId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ResponsibleRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/IncidentView"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/supervision/incidents/{incidentId}/resolve" : {
+      "post" : {
+        "tags" : [ "Logística - supervisión" ],
+        "summary" : "Resolver una novedad",
+        "description" : "SUPERVISOR y ADMIN. Cierra la novedad con observaciones de solución; el registro original se conserva con quién la reportó, quién la cerró y cuándo. Una novedad resuelta no se reabre (409).",
+        "operationId" : "resolve",
+        "parameters" : [ {
+          "name" : "incidentId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ResolveIncidentRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/IncidentView"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/supervision/incidents/{incidentId}/instructions" : {
+      "post" : {
+        "tags" : [ "Logística - supervisión" ],
+        "summary" : "Registrar una instrucción sobre una novedad",
+        "description" : "SUPERVISOR y ADMIN. Deja la instrucción en el historial del pedido y pasa la novedad a IN_PROGRESS. 409 si ya estaba resuelta.",
+        "operationId" : "instruct",
+        "parameters" : [ {
+          "name" : "incidentId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/InstructionRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/IncidentView"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/shippings/{shippingId}/in-transit" : {
+      "post" : {
+        "tags" : [ "Envíos" ],
+        "summary" : "Marcar el envío en tránsito",
+        "description" : "Solo OPERADOR logístico. Cuerpo vacío ({}).",
+        "operationId" : "inTransit",
+        "parameters" : [ {
+          "name" : "shippingId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/shippings/{shippingId}/dispatch" : {
+      "post" : {
+        "tags" : [ "Envíos" ],
+        "summary" : "Despachar un envío con guía",
+        "description" : "Solo el OPERADOR logístico asignado. Exige todo lo físico recogido y sin novedades abiertas.",
+        "operationId" : "dispatch",
+        "parameters" : [ {
+          "name" : "shippingId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/DispatchShippingRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/shippings/{shippingId}/deliver" : {
+      "post" : {
+        "tags" : [ "Envíos" ],
+        "summary" : "Entregar el envío",
+        "description" : "Solo el OPERADOR logístico asignado al pedido. Marca también el pedido como entregado. Cuerpo opcional con observaciones de la entrega ({\"notes\": \"...\"}). No avanza si hay novedades sin resolver. Queda en el historial con el operador y la hora; no se guarda evidencia digital (foto, firma, ubicación).",
+        "operationId" : "deliver",
+        "parameters" : [ {
+          "name" : "shippingId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/DeliveryRequest"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sellers/{sellerId}/warehouses" : {
+      "get" : {
+        "tags" : [ "Bodegas" ],
+        "summary" : "Listar las bodegas de un vendedor",
+        "description" : "VENDEDOR dueño, OPERADOR, ADMIN y SUPERVISOR.",
+        "operationId" : "findBySeller",
+        "parameters" : [ {
+          "name" : "sellerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/WarehouseResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "Bodegas" ],
+        "summary" : "Crear una bodega de un vendedor",
+        "description" : "Solo ADMIN.",
+        "operationId" : "createForSeller",
+        "parameters" : [ {
+          "name" : "sellerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/WarehouseCreateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Bodega creada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WarehouseResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sellers/{sellerId}/approve" : {
+      "post" : {
+        "tags" : [ "Usuarios" ],
+        "summary" : "Aprobar un vendedor",
+        "description" : "Solo ADMIN. Cuerpo vacío ({}).",
+        "operationId" : "approveSeller",
+        "parameters" : [ {
+          "name" : "sellerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/returns/{returnId}/reject" : {
+      "post" : {
+        "tags" : [ "Devoluciones y reembolsos" ],
+        "summary" : "Rechazar una devolución",
+        "description" : "Solo ADMIN.",
+        "operationId" : "reject",
+        "parameters" : [ {
+          "name" : "returnId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/returns/{returnId}/process" : {
+      "post" : {
+        "tags" : [ "Devoluciones y reembolsos" ],
+        "summary" : "Procesar la devolución recibida",
+        "description" : "Solo OPERADOR logístico.",
+        "operationId" : "process",
+        "parameters" : [ {
+          "name" : "returnId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/returns/{returnId}/approve" : {
+      "post" : {
+        "tags" : [ "Devoluciones y reembolsos" ],
+        "summary" : "Aprobar una devolución",
+        "description" : "Solo ADMIN. Crea el reembolso en estado PENDING: la respuesta trae su refundId.",
+        "operationId" : "approve",
+        "parameters" : [ {
+          "name" : "returnId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RefundResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/refunds/{refundId}/process" : {
+      "post" : {
+        "tags" : [ "Devoluciones y reembolsos" ],
+        "summary" : "Procesar un reembolso",
+        "description" : "Solo ADMIN. Repetirlo responde 409: un reembolso PROCESSED no se procesa dos veces.",
+        "operationId" : "processRefund",
+        "parameters" : [ {
+          "name" : "refundId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/products" : {
+      "get" : {
+        "tags" : [ "Catálogo y productos" ],
+        "summary" : "Listar el catálogo público",
+        "description" : "Pública. Solo productos publicados, con su código comercial (sellerSku) y el nombre del vendedor. Paginado: page y size (máximo 100), búsqueda por nombre con q; el total va en X-Total-Count. Para localizar un producto por su código comercial indique sellerSku junto con sellerId (el mismo código puede existir en varios vendedores, por eso sellerSku solo es ambiguo y se rechaza).",
+        "operationId" : "findPublished",
+        "parameters" : [ {
+          "name" : "page",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20
+          }
+        }, {
+          "name" : "q",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "sellerId",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "sellerSku",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/ProductResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security" : [ ]
+      },
+      "post" : {
+        "tags" : [ "Catálogo y productos" ],
+        "summary" : "Crear un producto",
+        "description" : "Solo VENDEDOR. Queda sin publicar. sellerSku es el código comercial legible (p. ej. TEC-001), único en el catálogo del vendedor; si se omite se genera uno (SKU-XXXXXXXX). El productId (UUID) sigue siendo la referencia técnica.",
+        "operationId" : "create",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateProductRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Producto creado.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProductResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/products/{productId}/variants" : {
+      "post" : {
+        "tags" : [ "Catálogo y productos" ],
+        "summary" : "Agregar una variante",
+        "description" : "Solo VENDEDOR dueño. Color, talla, modelo...: hasta 20 por producto, sin repetir. Las variantes se ven en specifications.variants del producto.",
+        "operationId" : "addVariant",
+        "parameters" : [ {
+          "name" : "productId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AddVariantRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProductResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/products/{productId}/unpublish" : {
+      "post" : {
+        "tags" : [ "Catálogo y productos" ],
+        "summary" : "Despublicar un producto",
+        "description" : "Solo VENDEDOR dueño. Cuerpo vacío ({}).",
+        "operationId" : "unpublish",
+        "parameters" : [ {
+          "name" : "productId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/products/{productId}/suspend" : {
+      "post" : {
+        "tags" : [ "Catálogo y productos" ],
+        "summary" : "Suspender un producto",
+        "description" : "Solo VENDEDOR dueño. Retiro temporal del catálogo (solo desde ACTIVE); publicarlo de nuevo lo reactiva. Cuerpo vacío ({}).",
+        "operationId" : "suspend",
+        "parameters" : [ {
+          "name" : "productId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/products/{productId}/publish" : {
+      "post" : {
+        "tags" : [ "Catálogo y productos" ],
+        "summary" : "Publicar un producto",
+        "description" : "Solo VENDEDOR dueño. Cuerpo vacío ({}).",
+        "operationId" : "publish",
+        "parameters" : [ {
+          "name" : "productId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/products/{productId}/discontinue" : {
+      "post" : {
+        "tags" : [ "Catálogo y productos" ],
+        "summary" : "Descontinuar un producto",
+        "description" : "Solo VENDEDOR dueño. Retiro definitivo: no vuelve a publicarse ni a editarse. Cuerpo vacío ({}).",
+        "operationId" : "discontinue",
+        "parameters" : [ {
+          "name" : "productId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/{orderId}/shippings" : {
+      "post" : {
+        "tags" : [ "Envíos" ],
+        "summary" : "Crear el envío de un pedido",
+        "description" : "Solo el OPERADOR logístico asignado. Un pedido tiene un solo envío y exige todo lo físico recogido y sin novedades abiertas.",
+        "operationId" : "create_1",
+        "parameters" : [ {
+          "name" : "orderId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/DispatchOrderRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Envío creado.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ShippingResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/{orderId}/returns" : {
+      "post" : {
+        "tags" : [ "Devoluciones y reembolsos" ],
+        "summary" : "Solicitar una devolución",
+        "description" : "Solo COMPRADOR dueño. Un pedido admite una devolución; los productos deben ser del pedido y no se devuelve más de lo comprado. reason es DAMAGED, WRONG_ITEM, NOT_AS_DESCRIBED u OTHER.",
+        "operationId" : "request",
+        "parameters" : [ {
+          "name" : "orderId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateReturnRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Devolución solicitada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ReturnResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/{orderId}/payment" : {
+      "post" : {
+        "tags" : [ "Pedidos y pagos" ],
+        "summary" : "Pagar un pedido",
+        "description" : "Solo COMPRADOR dueño. La pasarela es SIMULADA: no cobra. Responde con un transactionId TXN- y emite la factura.",
+        "operationId" : "confirmPayment",
+        "parameters" : [ {
+          "name" : "orderId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PaymentRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PaymentResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/{orderId}/invoice" : {
+      "get" : {
+        "tags" : [ "Facturas" ],
+        "summary" : "Consultar la factura de un pedido",
+        "description" : "COMPRADOR dueño, ADMIN y SUPERVISOR.",
+        "operationId" : "findByOrderId",
+        "parameters" : [ {
+          "name" : "orderId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/InvoiceResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "Facturas" ],
+        "summary" : "Emitir la factura de un pedido",
+        "description" : "Solo ADMIN. Normalmente la factura se emite sola al pagar.",
+        "operationId" : "generate",
+        "parameters" : [ {
+          "name" : "orderId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "201" : {
+            "description" : "Factura emitida.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/InvoiceResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/{orderId}/dispatch" : {
+      "post" : {
+        "tags" : [ "Pedidos y pagos" ],
+        "summary" : "Despachar un pedido",
+        "description" : "Solo el OPERADOR logístico asignado al pedido. El pedido debe estar pagado, con todo lo físico recogido y sin novedades abiertas.",
+        "operationId" : "dispatch_1",
+        "parameters" : [ {
+          "name" : "orderId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/DispatchOrderRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/{orderId}/deliver" : {
+      "post" : {
+        "tags" : [ "Pedidos y pagos" ],
+        "summary" : "Marcar el pedido como entregado",
+        "description" : "Solo el OPERADOR logístico asignado al pedido. Cuerpo opcional con observaciones de la entrega. No avanza si el pedido tiene novedades sin resolver. Queda en el historial con el operador y la hora.",
+        "operationId" : "deliver_1",
+        "parameters" : [ {
+          "name" : "orderId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/DeliveryRequest"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/{orderId}/cancel" : {
+      "post" : {
+        "tags" : [ "Pedidos y pagos" ],
+        "summary" : "Cancelar un pedido",
+        "description" : "Solo COMPRADOR dueño. Si ya estaba pagado, reembolsa y repone el stock. Sin cuerpo.",
+        "operationId" : "cancel",
+        "parameters" : [ {
+          "name" : "orderId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/logistics/orders/{reference}/pickups" : {
+      "post" : {
+        "tags" : [ "Logística - operador" ],
+        "summary" : "Registrar una recogida",
+        "description" : "Solo el OPERADOR asignado. Suma las unidades recogidas de un producto del pedido (nunca más de las pedidas). Solo con el pedido PAID. Errores: 409 PICKUP_EXCEEDS_REQUESTED, 404 ORDER_ITEM_NOT_FOUND.",
+        "operationId" : "registerPickup",
+        "parameters" : [ {
+          "name" : "reference",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RegisterPickupRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/OrderDetailResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/logistics/orders/{reference}/incidents" : {
+      "post" : {
+        "tags" : [ "Logística - operador" ],
+        "summary" : "Reportar una novedad",
+        "description" : "Solo el OPERADOR asignado. Tipos: PICKUP_DELAY, MISSING_PRODUCT, INCOMPLETE_QUANTITY, DAMAGED_PRODUCT, SELLER_WAREHOUSE_ISSUE, TRANSPORT_ISSUE, DELIVERY_DIFFICULTY, OTHER. No modifica cantidades, pagos ni inventario. Mientras haya novedades sin resolver el pedido no se despacha ni se entrega.",
+        "operationId" : "reportIncident",
+        "parameters" : [ {
+          "name" : "reference",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ReportIncidentRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Novedad registrada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/IncidentView"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/invoices/{invoiceId}/cancel" : {
+      "post" : {
+        "tags" : [ "Facturas" ],
+        "summary" : "Anular una factura",
+        "description" : "Solo ADMIN.",
+        "operationId" : "cancel_1",
+        "parameters" : [ {
+          "name" : "invoiceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inventory" : {
+      "post" : {
+        "tags" : [ "Inventario" ],
+        "summary" : "Crear el inventario de un producto en una bodega",
+        "description" : "Solo VENDEDOR dueño del producto y de la bodega.",
+        "operationId" : "create_2",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateInventoryRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Inventario creado.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/InventoryResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inventory/{inventoryId}/stock" : {
+      "post" : {
+        "tags" : [ "Inventario" ],
+        "summary" : "Agregar stock",
+        "description" : "Solo VENDEDOR dueño.",
+        "operationId" : "addStock",
+        "parameters" : [ {
+          "name" : "inventoryId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/QuantityRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inventory/{inventoryId}/damaged" : {
+      "post" : {
+        "tags" : [ "Inventario" ],
+        "summary" : "Marcar el inventario como dañado",
+        "description" : "Solo VENDEDOR dueño. Sin cuerpo.",
+        "operationId" : "markDamaged",
+        "parameters" : [ {
+          "name" : "inventoryId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inventory/{inventoryId}/active" : {
+      "post" : {
+        "tags" : [ "Inventario" ],
+        "summary" : "Marcar el inventario como activo",
+        "description" : "Solo VENDEDOR dueño. Sin cuerpo.",
+        "operationId" : "markActive",
+        "parameters" : [ {
+          "name" : "inventoryId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/buyers/{buyerId}/orders" : {
+      "get" : {
+        "tags" : [ "Pedidos y pagos" ],
+        "summary" : "Listar los pedidos del comprador",
+        "description" : "Solo COMPRADOR dueño. Paginado: page y size (máximo 100); el total va en la cabecera X-Total-Count.",
+        "operationId" : "listByBuyer",
+        "parameters" : [ {
+          "name" : "buyerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "page",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/OrderResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "Pedidos y pagos" ],
+        "summary" : "Crear un pedido desde el carrito",
+        "description" : "Solo COMPRADOR dueño. Un solo pedido puede incluir productos de varios vendedores; reserva el stock.",
+        "operationId" : "create_3",
+        "parameters" : [ {
+          "name" : "buyerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateOrderRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Pedido creado.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/OrderResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/buyers/{buyerId}/cart/items" : {
+      "post" : {
+        "tags" : [ "Carrito" ],
+        "summary" : "Agregar un producto al carrito",
+        "description" : "Solo COMPRADOR dueño. Un carrito admite productos de varios vendedores; si el producto ya está, suma la cantidad.",
+        "operationId" : "addItem",
+        "parameters" : [ {
+          "name" : "buyerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AddCartItemRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/buyers/{buyerId}/addresses" : {
+      "post" : {
+        "tags" : [ "Usuarios" ],
+        "summary" : "Agregar una dirección al comprador",
+        "description" : "Solo COMPRADOR dueño.",
+        "operationId" : "addAddress",
+        "parameters" : [ {
+          "name" : "buyerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AddressRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/register/staff" : {
+      "post" : {
+        "tags" : [ "Autenticación y cuentas" ],
+        "summary" : "Dar de alta personal interno",
+        "description" : "Solo ADMIN. Crea un operador logístico o un supervisor (role = LOGISTICS_OPERATOR o SUPERVISOR, nunca ADMIN). Es el único camino para crear un operador, necesario para despachar y entregar pedidos. El correo debe verificarse.",
+        "operationId" : "registerStaff",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RegisterStaffRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Cuenta creada. Falta verificar el correo.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/register/seller" : {
+      "post" : {
+        "tags" : [ "Autenticación y cuentas" ],
+        "summary" : "Registrar un vendedor",
+        "description" : "Solo ADMIN. El vendedor queda pendiente de aprobación y de verificar su correo.",
+        "operationId" : "registerSeller",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RegisterSellerRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Vendedor creado, pendiente de aprobación y de verificar el correo.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SellerResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/register/buyer" : {
+      "post" : {
+        "tags" : [ "Autenticación y cuentas" ],
+        "summary" : "Registrar un comprador",
+        "description" : "Pública. Crea la cuenta y el perfil de comprador. El correo debe verificarse antes de iniciar sesión.",
+        "operationId" : "registerBuyer",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RegisterBuyerRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Cuenta creada. Falta verificar el correo.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/BuyerResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/api/auth/password" : {
+      "post" : {
+        "tags" : [ "Autenticación y cuentas" ],
+        "summary" : "Cambiar la contraseña del administrador",
+        "description" : "Solo ADMIN, sobre su propia cuenta.",
+        "operationId" : "changePassword",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ChangePasswordRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/password/reset" : {
+      "post" : {
+        "tags" : [ "Autenticación y cuentas" ],
+        "summary" : "Restablecer la contraseña con el código",
+        "description" : "Pública. El código es de un solo uso y vence a los 30 minutos.",
+        "operationId" : "resetPassword",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ResetPasswordRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/api/auth/password/forgot" : {
+      "post" : {
+        "tags" : [ "Autenticación y cuentas" ],
+        "summary" : "Solicitar un código de recuperación",
+        "description" : "Pública. Responde 202 siempre, exista o no el correo, para no revelar qué cuentas existen. No aplica al ADMIN.",
+        "operationId" : "forgotPassword",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ForgotPasswordRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "202" : {
+            "description" : "Solicitud aceptada; se responde igual exista o no la cuenta.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/api/auth/login" : {
+      "post" : {
+        "tags" : [ "Autenticación y cuentas" ],
+        "summary" : "Iniciar sesión",
+        "description" : "Pública. Devuelve el token JWT: cópielo en el botón Authorize para probar los endpoints protegidos. Hay un límite de intentos (429) y tres fallos consecutivos desde al menos dos orígenes bloquean la cuenta hasta que un ADMIN la reactive.",
+        "operationId" : "login",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/api/auth/email/verify" : {
+      "post" : {
+        "tags" : [ "Autenticación y cuentas" ],
+        "summary" : "Verificar el correo",
+        "description" : "Pública. Con el código recibido por correo la cuenta ya puede iniciar sesión.",
+        "operationId" : "verifyEmail",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/VerifyEmailRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/api/auth/email/resend" : {
+      "post" : {
+        "tags" : [ "Autenticación y cuentas" ],
+        "summary" : "Reenviar el código de verificación",
+        "description" : "Pública. Responde 202 siempre, para no revelar qué cuentas existen.",
+        "operationId" : "resendVerification",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ResendVerificationRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "202" : {
+            "description" : "Solicitud aceptada; se responde igual exista o no la cuenta.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Cuerpo o parámetros inválidos.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/api/users/{userId}/deactivate" : {
+      "patch" : {
+        "tags" : [ "Usuarios" ],
+        "summary" : "Desactivar una cuenta",
+        "description" : "Solo ADMIN. {userId} acepta el UUID, el correo electrónico o el número de documento de la cuenta (por ejemplo juan@ejemplo.com o 1020304050).",
+        "operationId" : "deactivate",
+        "parameters" : [ {
+          "name" : "userId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/{userId}/block" : {
+      "patch" : {
+        "tags" : [ "Usuarios" ],
+        "summary" : "Bloquear una cuenta",
+        "description" : "Solo ADMIN. {userId} acepta el UUID, el correo electrónico o el número de documento de la cuenta (por ejemplo juan@ejemplo.com o 1020304050).",
+        "operationId" : "block",
+        "parameters" : [ {
+          "name" : "userId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/{userId}/activate" : {
+      "patch" : {
+        "tags" : [ "Usuarios" ],
+        "summary" : "Reactivar (desbloquear) una cuenta",
+        "description" : "Solo ADMIN. Es la única forma de reactivar una cuenta bloqueada. {userId} acepta el UUID, el correo electrónico o el número de documento de la cuenta (por ejemplo juan@ejemplo.com o 1020304050).",
+        "operationId" : "activate",
+        "parameters" : [ {
+          "name" : "userId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/warehouses/{warehouseId}" : {
+      "get" : {
+        "tags" : [ "Bodegas" ],
+        "summary" : "Consultar una bodega",
+        "description" : "VENDEDOR dueño, OPERADOR, ADMIN y SUPERVISOR.",
+        "operationId" : "findById_1",
+        "parameters" : [ {
+          "name" : "warehouseId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WarehouseResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/{userId}" : {
+      "get" : {
+        "tags" : [ "Usuarios" ],
+        "summary" : "Consultar un usuario",
+        "description" : "Cada usuario puede consultar su propia cuenta; ADMIN y SUPERVISOR, cualquiera. {userId} acepta el UUID, el correo electrónico o el número de documento de la cuenta (por ejemplo juan@ejemplo.com o 1020304050). La respuesta incluye buyerId o sellerId (y businessName) para continuar con las demás operaciones.",
+        "operationId" : "findUser",
+        "parameters" : [ {
+          "name" : "userId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/supervision/orders" : {
+      "get" : {
+        "tags" : [ "Logística - supervisión" ],
+        "summary" : "Panel de supervisión de pedidos",
+        "description" : "SUPERVISOR y ADMIN. Filtros: q (fragmento del código NM-PED-...), operator (correo, documento o UUID), status (PAID, DISPATCHED, DELIVERED), unassigned=true (sin operador), withIncidents (true/false: con o sin novedades sin resolver), pickupsPending (true/false), from y to (fecha de creación AAAA-MM-DD). Paginado; el total va en X-Total-Count. Muestra el operador, las recogidas completadas y pendientes y las novedades abiertas.",
+        "operationId" : "orders",
+        "parameters" : [ {
+          "name" : "q",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "operator",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "status",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "unassigned",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "boolean",
+            "default" : false
+          }
+        }, {
+          "name" : "withIncidents",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "boolean"
+          }
+        }, {
+          "name" : "pickupsPending",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "boolean"
+          }
+        }, {
+          "name" : "from",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "name" : "to",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "name" : "page",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/OrderSummaryView"
+                  }
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/supervision/orders/{reference}" : {
+      "get" : {
+        "tags" : [ "Logística - supervisión" ],
+        "summary" : "Detalle de un pedido para supervisión",
+        "description" : "SUPERVISOR y ADMIN. El pedido se indica por UUID o código NM-PED-... Muestra productos, cantidades pedidas y recogidas, vendedor de cada línea, operador asignado, novedades e historial cronológico. No incluye la dirección de entrega.",
+        "operationId" : "detail",
+        "parameters" : [ {
+          "name" : "reference",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/OrderDetailResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/supervision/incidents" : {
+      "get" : {
+        "tags" : [ "Logística - supervisión" ],
+        "summary" : "Listar novedades",
+        "description" : "SUPERVISOR y ADMIN. Filtro opcional status (OPEN, IN_PROGRESS, RESOLVED). Más recientes primero; paginado.",
+        "operationId" : "incidents",
+        "parameters" : [ {
+          "name" : "status",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "page",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/IncidentView"
+                  }
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/supervision/incidents/{incidentId}" : {
+      "get" : {
+        "tags" : [ "Logística - supervisión" ],
+        "summary" : "Consultar una novedad",
+        "description" : "SUPERVISOR y ADMIN. Incluye quién la reportó, quién la atiende y quién la cerró.",
+        "operationId" : "incident",
+        "parameters" : [ {
+          "name" : "incidentId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/IncidentView"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/shippings/{shippingId}" : {
+      "get" : {
+        "tags" : [ "Envíos" ],
+        "summary" : "Consultar un envío",
+        "description" : "COMPRADOR, VENDEDOR, OPERADOR, ADMIN y SUPERVISOR.",
+        "operationId" : "findById_2",
+        "parameters" : [ {
+          "name" : "shippingId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ShippingResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sellers/{sellerId}/products" : {
+      "get" : {
+        "tags" : [ "Catálogo y productos" ],
+        "summary" : "Listar los productos de un vendedor",
+        "description" : "VENDEDOR dueño, ADMIN y SUPERVISOR. Todos los estados (ACTIVE, INACTIVE, SUSPENDED, DISCONTINUED, OUT_OF_STOCK); filtre con status. Paginado: page y size (máximo 100); el total va en X-Total-Count.",
+        "operationId" : "listBySeller",
+        "parameters" : [ {
+          "name" : "sellerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "page",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20
+          }
+        }, {
+          "name" : "status",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/ProductResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sellers/{sellerId}/products/by-sku/{sellerSku}" : {
+      "get" : {
+        "tags" : [ "Catálogo y productos" ],
+        "summary" : "Buscar un producto por su código comercial",
+        "description" : "VENDEDOR dueño, ADMIN y SUPERVISOR. Localiza el producto del vendedor {sellerId} cuyo código comercial (sellerSku) es el indicado, en cualquier estado. El código es único dentro de cada vendedor, así que el resultado nunca es ambiguo; si no existe, 404.",
+        "operationId" : "findBySku",
+        "parameters" : [ {
+          "name" : "sellerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "sellerSku",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProductResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/returns/{returnId}" : {
+      "get" : {
+        "tags" : [ "Devoluciones y reembolsos" ],
+        "summary" : "Consultar una devolución",
+        "description" : "COMPRADOR dueño, OPERADOR, ADMIN y SUPERVISOR.",
+        "operationId" : "findById_3",
+        "parameters" : [ {
+          "name" : "returnId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ReturnResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/sales" : {
+      "get" : {
+        "tags" : [ "Reportes" ],
+        "summary" : "Ventas",
+        "description" : "Solo ADMIN y SUPERVISOR. Pedidos con venta efectiva (PAID, DISPATCHED y DELIVERED) y su suma, una línea por moneda. No incluye pedidos pendientes de pago, en carrito ni cancelados.",
+        "operationId" : "sales",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SalesReportResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/orders-by-status" : {
+      "get" : {
+        "tags" : [ "Reportes" ],
+        "summary" : "Pedidos por estado",
+        "description" : "Solo ADMIN y SUPERVISOR. Cantidad de pedidos en cada estado del ciclo (CART, PENDING_PAYMENT, PAID, DISPATCHED, DELIVERED, CANCELLED), con 0 en los estados sin pedidos.",
+        "operationId" : "ordersByStatus",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/OrdersByStatusResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/damaged-inventory" : {
+      "get" : {
+        "tags" : [ "Reportes" ],
+        "summary" : "Inventario dañado",
+        "description" : "Solo ADMIN y SUPERVISOR. Registros de inventario marcados como dañados, el más reciente primero. Paginado con size (máximo 100); el total va en la cabecera X-Total-Count.",
+        "operationId" : "damagedInventory",
+        "parameters" : [ {
+          "name" : "size",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/InventoryResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/{orderId}" : {
+      "get" : {
+        "tags" : [ "Pedidos y pagos" ],
+        "summary" : "Consultar un pedido",
+        "description" : "COMPRADOR dueño, VENDEDOR, OPERADOR, ADMIN y SUPERVISOR. Un vendedor ve solo sus propias líneas y su subtotal.",
+        "operationId" : "findById_4",
+        "parameters" : [ {
+          "name" : "orderId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "object"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/{orderId}/shipping" : {
+      "get" : {
+        "tags" : [ "Envíos" ],
+        "summary" : "Consultar el envío de un pedido",
+        "description" : "COMPRADOR, VENDEDOR, OPERADOR, ADMIN y SUPERVISOR.",
+        "operationId" : "findByOrderId_1",
+        "parameters" : [ {
+          "name" : "orderId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ShippingResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/logistics/orders" : {
+      "get" : {
+        "tags" : [ "Logística - operador" ],
+        "summary" : "Listar mis pedidos asignados",
+        "description" : "Solo OPERADOR logístico: únicamente los pedidos que tiene asignados. Filtros: q (fragmento del código), status (PAID, DISPATCHED, DELIVERED), from y to (fecha de creación, AAAA-MM-DD). Paginado (page, size ≤ 100); el total va en X-Total-Count. No incluye correo ni dirección del comprador.",
+        "operationId" : "myOrders",
+        "parameters" : [ {
+          "name" : "q",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "status",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "from",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "name" : "to",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "name" : "page",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/OrderSummaryView"
+                  }
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/logistics/orders/{reference}" : {
+      "get" : {
+        "tags" : [ "Logística - operador" ],
+        "summary" : "Detalle de un pedido asignado",
+        "description" : "Solo el OPERADOR asignado. Productos con código, vendedor, cantidad pedida, recogida y pendiente, estado de cada recogida, novedades, historial y dirección de entrega. 403 si el pedido es de otro operador o no existe.",
+        "operationId" : "detail_1",
+        "parameters" : [ {
+          "name" : "reference",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/OrderDetailResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/invoices/{invoiceId}" : {
+      "get" : {
+        "tags" : [ "Facturas" ],
+        "summary" : "Consultar una factura",
+        "description" : "COMPRADOR dueño, ADMIN y SUPERVISOR.",
+        "operationId" : "findById_5",
+        "parameters" : [ {
+          "name" : "invoiceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/InvoiceResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inventory/{inventoryId}" : {
+      "get" : {
+        "tags" : [ "Inventario" ],
+        "summary" : "Consultar un inventario",
+        "description" : "VENDEDOR dueño, ADMIN y SUPERVISOR.",
+        "operationId" : "findById_6",
+        "parameters" : [ {
+          "name" : "inventoryId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/InventoryResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/buyers/{buyerId}/invoices" : {
+      "get" : {
+        "tags" : [ "Facturas" ],
+        "summary" : "Listar las facturas del comprador",
+        "description" : "Solo COMPRADOR dueño. Paginado: page y size (máximo 100); el total va en la cabecera X-Total-Count.",
+        "operationId" : "listByBuyer_1",
+        "parameters" : [ {
+          "name" : "buyerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "page",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/InvoiceResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/buyers/{buyerId}/cart" : {
+      "get" : {
+        "tags" : [ "Carrito" ],
+        "summary" : "Ver el carrito",
+        "description" : "Solo COMPRADOR dueño del carrito. Cada línea incluye el código comercial (sellerSku), el nombre del vendedor y su identificador; la respuesta incluye el nombre y el correo del comprador.",
+        "operationId" : "getOrCreate",
+        "parameters" : [ {
+          "name" : "buyerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CartResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete" : {
+        "tags" : [ "Carrito" ],
+        "summary" : "Vaciar el carrito",
+        "description" : "Solo COMPRADOR dueño.",
+        "operationId" : "clear",
+        "parameters" : [ {
+          "name" : "buyerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/products/{productId}/variants/{variant}" : {
+      "delete" : {
+        "tags" : [ "Catálogo y productos" ],
+        "summary" : "Quitar una variante",
+        "description" : "Solo VENDEDOR dueño.",
+        "operationId" : "removeVariant",
+        "parameters" : [ {
+          "name" : "productId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "variant",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProductResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Falta el token, es inválido o venció.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "El rol no permite la operación, el recurso es de otra persona, el correo no está verificado o la cuenta está bloqueada.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "UpdateProductRequest" : {
+        "type" : "object",
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "description" : "Nombre",
+            "example" : "Producto de ejemplo",
+            "maxLength" : 100,
+            "minLength" : 0
+          },
+          "description" : {
+            "type" : "string",
+            "description" : "Descripción",
+            "example" : "Descripción del producto",
+            "maxLength" : 500,
+            "minLength" : 0
+          },
+          "sellerSku" : {
+            "type" : "string",
+            "description" : "Nuevo código comercial (opcional). Cambiarlo no afecta el inventario, los carritos ni los pedidos, que usan el productId.",
+            "example" : "TEC-001",
+            "pattern" : "^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,38}[A-Za-z0-9])?$"
+          }
+        },
+        "required" : [ "description", "name" ]
+      },
+      "MoneyResponse" : {
+        "type" : "object",
+        "properties" : {
+          "amount" : {
+            "type" : "number"
+          },
+          "currency" : {
+            "type" : "string"
+          }
+        }
+      },
+      "ProductResponse" : {
+        "type" : "object",
+        "properties" : {
+          "productId" : {
+            "type" : "string"
+          },
+          "sellerId" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "type" : {
+            "type" : "string"
+          },
+          "price" : {
+            "$ref" : "#/components/schemas/MoneyResponse"
+          },
+          "status" : {
+            "type" : "string"
+          },
+          "specifications" : {
+            "type" : "object",
+            "additionalProperties" : { }
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "sellerSku" : {
+            "type" : "string",
+            "description" : "Código comercial que define el vendedor (único en su catálogo). Nulo en productos anteriores a su asignación.",
+            "example" : "TEC-001"
+          },
+          "sellerName" : {
+            "type" : "string",
+            "description" : "Nombre comercial del vendedor",
+            "example" : "Tecnología Pérez"
+          }
+        }
+      },
+      "MoneyRequest" : {
+        "type" : "object",
+        "properties" : {
+          "amount" : {
+            "type" : "number",
+            "description" : "Monto",
+            "example" : 1500.0,
+            "exclusiveMinimum" : 0
+          },
+          "currency" : {
+            "type" : "string",
+            "description" : "Moneda (ISO 4217)",
+            "example" : "COP",
+            "maxLength" : 3,
+            "minLength" : 3
+          }
+        },
+        "required" : [ "amount", "currency" ]
+      },
+      "UpdatePriceRequest" : {
+        "type" : "object",
+        "properties" : {
+          "price" : {
+            "$ref" : "#/components/schemas/MoneyRequest",
+            "description" : "Precio"
+          }
+        },
+        "required" : [ "price" ]
+      },
+      "MessageResponse" : {
+        "type" : "object",
+        "properties" : {
+          "message" : {
+            "type" : "string"
+          }
+        }
+      },
+      "AssignOperatorRequest" : {
+        "type" : "object",
+        "properties" : {
+          "operator" : {
+            "type" : "string",
+            "description" : "Operador logístico: correo, documento o UUID de la cuenta",
+            "example" : "operador@demo.test",
+            "maxLength" : 100,
+            "minLength" : 0
+          }
+        },
+        "required" : [ "operator" ]
+      },
+      "AddressResponse" : {
+        "type" : "object",
+        "properties" : {
+          "street" : {
+            "type" : "string"
+          },
+          "number" : {
+            "type" : "string"
+          },
+          "complement" : {
+            "type" : "string"
+          },
+          "neighborhood" : {
+            "type" : "string"
+          },
+          "city" : {
+            "type" : "string"
+          },
+          "state" : {
+            "type" : "string"
+          },
+          "postalCode" : {
+            "type" : "string"
+          },
+          "country" : {
+            "type" : "string"
+          }
+        }
+      },
+      "EventView" : {
+        "type" : "object",
+        "properties" : {
+          "type" : {
+            "type" : "string"
+          },
+          "incidentId" : {
+            "type" : "string"
+          },
+          "actor" : {
+            "$ref" : "#/components/schemas/PersonRef"
+          },
+          "actorRole" : {
+            "type" : "string"
+          },
+          "detail" : {
+            "type" : "string"
+          },
+          "at" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "IncidentView" : {
+        "type" : "object",
+        "properties" : {
+          "incidentId" : {
+            "type" : "string"
+          },
+          "orderId" : {
+            "type" : "string"
+          },
+          "orderCode" : {
+            "type" : "string"
+          },
+          "productId" : {
+            "type" : "string"
+          },
+          "productName" : {
+            "type" : "string"
+          },
+          "type" : {
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string"
+          },
+          "reportedBy" : {
+            "$ref" : "#/components/schemas/PersonRef"
+          },
+          "reportedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "responsible" : {
+            "$ref" : "#/components/schemas/PersonRef"
+          },
+          "resolutionNotes" : {
+            "type" : "string"
+          },
+          "resolvedBy" : {
+            "$ref" : "#/components/schemas/PersonRef"
+          },
+          "resolvedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "updatedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "OrderDetailResponse" : {
+        "type" : "object",
+        "properties" : {
+          "order" : {
+            "$ref" : "#/components/schemas/OrderSummaryView"
+          },
+          "shippingAddress" : {
+            "$ref" : "#/components/schemas/AddressResponse",
+            "description" : "Dirección de entrega (solo operador asignado)"
+          },
+          "shippingId" : {
+            "type" : "string",
+            "description" : "Identificador del envío, si ya se creó"
+          },
+          "shippingStatus" : {
+            "type" : "string",
+            "description" : "Estado del envío: PREPARING, DISPATCHED, IN_TRANSIT o DELIVERED"
+          },
+          "lines" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/PickupLineView"
+            }
+          },
+          "incidents" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/IncidentView"
+            }
+          },
+          "timeline" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/EventView"
+            }
+          }
+        }
+      },
+      "OrderSummaryView" : {
+        "type" : "object",
+        "properties" : {
+          "orderId" : {
+            "type" : "string"
+          },
+          "orderCode" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string"
+          },
+          "logisticsStage" : {
+            "type" : "string"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "updatedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "buyerName" : {
+            "type" : "string"
+          },
+          "productLines" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "totalUnits" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "sellers" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "productsSummary" : {
+            "type" : "string"
+          },
+          "linesPicked" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "linesPending" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "unitsRequested" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "unitsPicked" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "openIncidents" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "operator" : {
+            "$ref" : "#/components/schemas/PersonRef"
+          },
+          "assignedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "availableActions" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        }
+      },
+      "PersonRef" : {
+        "type" : "object",
+        "properties" : {
+          "userId" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          }
+        }
+      },
+      "PickupLineView" : {
+        "type" : "object",
+        "properties" : {
+          "productId" : {
+            "type" : "string"
+          },
+          "productName" : {
+            "type" : "string"
+          },
+          "sellerSku" : {
+            "type" : "string"
+          },
+          "sellerId" : {
+            "type" : "string"
+          },
+          "sellerName" : {
+            "type" : "string"
+          },
+          "requested" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "picked" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "pending" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "status" : {
+            "type" : "string"
+          }
+        }
+      },
+      "QuantityRequest" : {
+        "type" : "object",
+        "properties" : {
+          "quantity" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Cantidad (mayor que cero)",
+            "example" : 2,
+            "exclusiveMinimum" : 0
+          }
+        }
+      },
+      "AddressRequest" : {
+        "type" : "object",
+        "properties" : {
+          "street" : {
+            "type" : "string",
+            "description" : "Calle",
+            "example" : "Calle 1",
+            "maxLength" : 120,
+            "minLength" : 0
+          },
+          "number" : {
+            "type" : "string",
+            "description" : "Número",
+            "example" : "12-34",
+            "maxLength" : 30,
+            "minLength" : 0
+          },
+          "complement" : {
+            "type" : "string",
+            "description" : "Complemento (opcional)",
+            "example" : "Piso 3",
+            "maxLength" : 120,
+            "minLength" : 0
+          },
+          "neighborhood" : {
+            "type" : "string",
+            "description" : "Barrio",
+            "example" : "Centro",
+            "maxLength" : 120,
+            "minLength" : 0
+          },
+          "city" : {
+            "type" : "string",
+            "description" : "Ciudad",
+            "example" : "Bogota",
+            "maxLength" : 80,
+            "minLength" : 0
+          },
+          "state" : {
+            "type" : "string",
+            "description" : "Departamento o estado",
+            "example" : "Cundinamarca",
+            "maxLength" : 80,
+            "minLength" : 0
+          },
+          "postalCode" : {
+            "type" : "string",
+            "description" : "Código postal",
+            "example" : "110111",
+            "maxLength" : 10,
+            "minLength" : 0
+          },
+          "country" : {
+            "type" : "string",
+            "description" : "País (código de 2 letras)",
+            "example" : "CO",
+            "maxLength" : 80,
+            "minLength" : 0,
+            "pattern" : "^[A-Z]{2}$"
+          }
+        },
+        "required" : [ "city", "country", "neighborhood", "number", "postalCode", "state", "street" ]
+      },
+      "WarehouseCreateRequest" : {
+        "type" : "object",
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "description" : "Nombre",
+            "example" : "Producto de ejemplo",
+            "maxLength" : 120,
+            "minLength" : 0
+          },
+          "address" : {
+            "$ref" : "#/components/schemas/AddressRequest",
+            "description" : "Dirección"
+          }
+        },
+        "required" : [ "address", "name" ]
+      },
+      "WarehouseResponse" : {
+        "type" : "object",
+        "properties" : {
+          "warehouseId" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "address" : {
+            "$ref" : "#/components/schemas/AddressResponse"
+          },
+          "type" : {
+            "type" : "string"
+          },
+          "sellerId" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string"
+          }
+        }
+      },
+      "ResponsibleRequest" : {
+        "type" : "object",
+        "properties" : {
+          "responsible" : {
+            "type" : "string",
+            "description" : "Responsable del seguimiento: correo, documento o UUID de la cuenta",
+            "maxLength" : 100,
+            "minLength" : 0
+          }
+        },
+        "required" : [ "responsible" ]
+      },
+      "ResolveIncidentRequest" : {
+        "type" : "object",
+        "properties" : {
+          "notes" : {
+            "type" : "string",
+            "description" : "Observaciones de la solución",
+            "example" : "El vendedor entregó el producto",
+            "maxLength" : 1000,
+            "minLength" : 0
+          }
+        },
+        "required" : [ "notes" ]
+      },
+      "InstructionRequest" : {
+        "type" : "object",
+        "properties" : {
+          "text" : {
+            "type" : "string",
+            "description" : "Instrucción u observación de seguimiento",
+            "example" : "Contactar al vendedor B hoy",
+            "maxLength" : 1000,
+            "minLength" : 0
+          }
+        },
+        "required" : [ "text" ]
+      },
+      "DispatchShippingRequest" : {
+        "type" : "object",
+        "properties" : {
+          "trackingNumber" : {
+            "type" : "string",
+            "description" : "Número de guía de la transportadora",
+            "example" : "TRK-0001",
+            "maxLength" : 64,
+            "minLength" : 0
+          },
+          "carrier" : {
+            "type" : "string",
+            "description" : "Transportadora",
+            "example" : "Transportadora Demo",
+            "maxLength" : 80,
+            "minLength" : 0
+          }
+        },
+        "required" : [ "carrier", "trackingNumber" ]
+      },
+      "DeliveryRequest" : {
+        "type" : "object",
+        "properties" : {
+          "notes" : {
+            "type" : "string",
+            "description" : "Observaciones de la entrega (opcional)",
+            "example" : "Recibió el comprador",
+            "maxLength" : 500,
+            "minLength" : 0
+          }
+        }
+      },
+      "RefundResponse" : {
+        "type" : "object",
+        "properties" : {
+          "refundId" : {
+            "type" : "string"
+          },
+          "returnId" : {
+            "type" : "string"
+          },
+          "orderId" : {
+            "type" : "string"
+          },
+          "amount" : {
+            "$ref" : "#/components/schemas/MoneyResponse"
+          },
+          "status" : {
+            "type" : "string"
+          },
+          "requestDate" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "processedDate" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "CreateProductRequest" : {
+        "type" : "object",
+        "properties" : {
+          "sellerId" : {
+            "type" : "string",
+            "description" : "Identificador del vendedor",
+            "example" : "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "minLength" : 1
+          },
+          "name" : {
+            "type" : "string",
+            "description" : "Nombre",
+            "example" : "Producto de ejemplo",
+            "maxLength" : 100,
+            "minLength" : 0
+          },
+          "description" : {
+            "type" : "string",
+            "description" : "Descripción",
+            "example" : "Descripción del producto",
+            "maxLength" : 500,
+            "minLength" : 0
+          },
+          "type" : {
+            "type" : "string",
+            "description" : "Tipo de producto",
+            "example" : "PHYSICAL",
+            "minLength" : 1
+          },
+          "price" : {
+            "$ref" : "#/components/schemas/MoneyRequest",
+            "description" : "Precio"
+          },
+          "sellerSku" : {
+            "type" : "string",
+            "description" : "Código comercial del producto, definido por el vendedor: único en su catálogo (otro vendedor puede usar el mismo). Opcional: si se omite, se genera uno automático (SKU-XXXXXXXX).",
+            "example" : "TEC-001",
+            "pattern" : "^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,38}[A-Za-z0-9])?$"
+          }
+        },
+        "required" : [ "description", "name", "price", "sellerId", "type" ]
+      },
+      "AddVariantRequest" : {
+        "type" : "object",
+        "properties" : {
+          "variant" : {
+            "type" : "string",
+            "description" : "Variante: color, talla, modelo...",
+            "example" : "Rojo - talla M",
+            "maxLength" : 50,
+            "minLength" : 0
+          }
+        },
+        "required" : [ "variant" ]
+      },
+      "DispatchOrderRequest" : {
+        "type" : "object",
+        "properties" : {
+          "warehouseId" : {
+            "type" : "string",
+            "description" : "Identificador de la bodega",
+            "example" : "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "minLength" : 1
+          }
+        },
+        "required" : [ "warehouseId" ]
+      },
+      "ShippingResponse" : {
+        "type" : "object",
+        "properties" : {
+          "shippingId" : {
+            "type" : "string"
+          },
+          "orderId" : {
+            "type" : "string"
+          },
+          "warehouseId" : {
+            "type" : "string"
+          },
+          "trackingNumber" : {
+            "type" : "string"
+          },
+          "carrier" : {
+            "type" : "string"
+          },
+          "estimatedDate" : {
+            "type" : "string",
+            "format" : "date"
+          },
+          "status" : {
+            "type" : "string"
+          }
+        }
+      },
+      "CreateReturnRequest" : {
+        "type" : "object",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ReturnLineRequest"
+            },
+            "minItems" : 1
+          }
+        },
+        "required" : [ "items" ]
+      },
+      "ReturnLineRequest" : {
+        "type" : "object",
+        "properties" : {
+          "productId" : {
+            "type" : "string",
+            "description" : "Identificador del producto",
+            "example" : "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "minLength" : 1
+          },
+          "quantity" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Cantidad (mayor que cero)",
+            "example" : 2,
+            "exclusiveMinimum" : 0
+          },
+          "reason" : {
+            "type" : "string",
+            "description" : "Motivo de la devolución: DAMAGED, WRONG_ITEM, NOT_AS_DESCRIBED u OTHER",
+            "enum" : [ "DAMAGED", "WRONG_ITEM", "NOT_AS_DESCRIBED", "OTHER" ],
+            "example" : "DAMAGED",
+            "minLength" : 1
+          }
+        },
+        "required" : [ "productId", "reason" ]
+      },
+      "ItemResponse" : {
+        "type" : "object",
+        "properties" : {
+          "productId" : {
+            "type" : "string"
+          },
+          "productName" : {
+            "type" : "string"
+          },
+          "quantity" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "unitPrice" : {
+            "$ref" : "#/components/schemas/MoneyResponse"
+          },
+          "total" : {
+            "$ref" : "#/components/schemas/MoneyResponse"
+          },
+          "type" : {
+            "type" : "string"
+          },
+          "sellerSku" : {
+            "type" : "string",
+            "description" : "Código comercial del producto",
+            "example" : "TEC-001"
+          },
+          "sellerName" : {
+            "type" : "string",
+            "description" : "Nombre comercial del vendedor",
+            "example" : "Tecnología Pérez"
+          },
+          "sellerId" : {
+            "type" : "string",
+            "description" : "Identificador del vendedor"
+          }
+        }
+      },
+      "ReturnResponse" : {
+        "type" : "object",
+        "properties" : {
+          "returnId" : {
+            "type" : "string"
+          },
+          "orderId" : {
+            "type" : "string"
+          },
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ItemResponse"
+            }
+          },
+          "status" : {
+            "type" : "string"
+          },
+          "requestDate" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "resolutionDate" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "PaymentRequest" : {
+        "type" : "object",
+        "properties" : {
+          "paymentMethod" : {
+            "type" : "string",
+            "description" : "Método de pago (la pasarela es simulada)",
+            "example" : "CARD",
+            "minLength" : 1
+          }
+        },
+        "required" : [ "paymentMethod" ]
+      },
+      "PaymentResponse" : {
+        "type" : "object",
+        "properties" : {
+          "transactionId" : {
+            "type" : "string"
+          },
+          "date" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "paymentMethod" : {
+            "type" : "string"
+          }
+        }
+      },
+      "InvoiceResponse" : {
+        "type" : "object",
+        "properties" : {
+          "invoiceId" : {
+            "type" : "string"
+          },
+          "orderId" : {
+            "type" : "string"
+          },
+          "buyerId" : {
+            "type" : "string"
+          },
+          "sellerId" : {
+            "type" : "string"
+          },
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ItemResponse"
+            }
+          },
+          "total" : {
+            "$ref" : "#/components/schemas/MoneyResponse"
+          },
+          "issueDate" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "status" : {
+            "type" : "string"
+          }
+        }
+      },
+      "RegisterPickupRequest" : {
+        "type" : "object",
+        "properties" : {
+          "productId" : {
+            "type" : "string",
+            "description" : "Producto del pedido que se recogió",
+            "minLength" : 1
+          },
+          "quantity" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Unidades recogidas ahora (se acumulan)",
+            "example" : 2,
+            "exclusiveMinimum" : 0
+          }
+        },
+        "required" : [ "productId" ]
+      },
+      "ReportIncidentRequest" : {
+        "type" : "object",
+        "properties" : {
+          "productId" : {
+            "type" : "string",
+            "description" : "Producto relacionado (opcional)"
+          },
+          "type" : {
+            "type" : "string",
+            "description" : "Tipo de novedad",
+            "enum" : [ "PICKUP_DELAY", "MISSING_PRODUCT", "INCOMPLETE_QUANTITY", "DAMAGED_PRODUCT", "SELLER_WAREHOUSE_ISSUE", "TRANSPORT_ISSUE", "DELIVERY_DIFFICULTY", "OTHER" ],
+            "example" : "MISSING_PRODUCT"
+          },
+          "description" : {
+            "type" : "string",
+            "description" : "Qué ocurrió",
+            "example" : "El vendedor aún no entrega el producto",
+            "maxLength" : 1000,
+            "minLength" : 0
+          }
+        },
+        "required" : [ "description", "type" ]
+      },
+      "CreateInventoryRequest" : {
+        "type" : "object",
+        "properties" : {
+          "productId" : {
+            "type" : "string",
+            "description" : "Identificador del producto",
+            "example" : "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "minLength" : 1
+          },
+          "warehouseId" : {
+            "type" : "string",
+            "description" : "Identificador de la bodega",
+            "example" : "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "minLength" : 1
+          }
+        },
+        "required" : [ "productId", "warehouseId" ]
+      },
+      "InventoryResponse" : {
+        "type" : "object",
+        "properties" : {
+          "inventoryId" : {
+            "type" : "string"
+          },
+          "productId" : {
+            "type" : "string"
+          },
+          "warehouseId" : {
+            "type" : "string"
+          },
+          "quantity" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "reservedQuantity" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "availableQuantity" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "status" : {
+            "type" : "string"
+          },
+          "updatedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "CreateOrderRequest" : {
+        "type" : "object",
+        "properties" : {
+          "shippingAddress" : {
+            "$ref" : "#/components/schemas/AddressRequest",
+            "description" : "Dirección de envío"
+          }
+        },
+        "required" : [ "shippingAddress" ]
+      },
+      "OrderResponse" : {
+        "type" : "object",
+        "properties" : {
+          "orderId" : {
+            "type" : "string"
+          },
+          "buyerId" : {
+            "type" : "string"
+          },
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ItemResponse"
+            }
+          },
+          "status" : {
+            "type" : "string"
+          },
+          "total" : {
+            "$ref" : "#/components/schemas/MoneyResponse"
+          },
+          "shippingAddress" : {
+            "$ref" : "#/components/schemas/AddressResponse"
+          },
+          "invoiceId" : {
+            "type" : "string"
+          },
+          "deliveredAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "buyerName" : {
+            "type" : "string",
+            "description" : "Nombre completo del comprador"
+          },
+          "buyerEmail" : {
+            "type" : "string",
+            "description" : "Correo del comprador (solo lo ven el propio comprador, ADMIN y SUPERVISOR)"
+          },
+          "orderCode" : {
+            "type" : "string",
+            "description" : "Código legible del pedido",
+            "example" : "NM-PED-2026-7K3F9Q"
+          }
+        }
+      },
+      "AddCartItemRequest" : {
+        "type" : "object",
+        "properties" : {
+          "productId" : {
+            "type" : "string",
+            "description" : "Identificador del producto",
+            "example" : "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "minLength" : 1
+          },
+          "quantity" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Cantidad (mayor que cero)",
+            "example" : 2,
+            "exclusiveMinimum" : 0
+          }
+        },
+        "required" : [ "productId" ]
+      },
+      "RegisterStaffRequest" : {
+        "type" : "object",
+        "properties" : {
+          "fullName" : {
+            "type" : "string",
+            "description" : "Nombre completo",
+            "example" : "Ana Pérez",
+            "maxLength" : 100,
+            "minLength" : 0
+          },
+          "email" : {
+            "type" : "string",
+            "format" : "email",
+            "description" : "Correo electrónico (único)",
+            "example" : "ana.perez@demo.test",
+            "maxLength" : 160,
+            "minLength" : 0
+          },
+          "documentId" : {
+            "type" : "string",
+            "description" : "Documento de identidad (único, de 4 a 20 caracteres)",
+            "example" : "CC-1020304050",
+            "maxLength" : 20,
+            "minLength" : 0
+          },
+          "password" : {
+            "type" : "string",
+            "format" : "password",
+            "description" : "Contraseña (mínimo 8 caracteres, máximo 72 bytes)",
+            "example" : "<clave-de-al-menos-8-caracteres>",
+            "maxLength" : 2147483647,
+            "minLength" : 8,
+            "writeOnly" : true
+          },
+          "role" : {
+            "type" : "string",
+            "description" : "Rol del personal interno",
+            "enum" : [ "LOGISTICS_OPERATOR", "SUPERVISOR" ],
+            "example" : "LOGISTICS_OPERATOR",
+            "minLength" : 1,
+            "pattern" : "LOGISTICS_OPERATOR|SUPERVISOR"
+          }
+        },
+        "required" : [ "documentId", "email", "fullName", "password", "role" ]
+      },
+      "UserResponse" : {
+        "type" : "object",
+        "properties" : {
+          "userId" : {
+            "type" : "string"
+          },
+          "fullName" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          },
+          "documentId" : {
+            "type" : "string"
+          },
+          "role" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "updatedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "buyerId" : {
+            "type" : "string",
+            "description" : "Identificador de comprador, si la cuenta es de un comprador"
+          },
+          "sellerId" : {
+            "type" : "string",
+            "description" : "Identificador de vendedor, si la cuenta es de un vendedor"
+          },
+          "businessName" : {
+            "type" : "string",
+            "description" : "Nombre comercial, si la cuenta es de un vendedor"
+          }
+        }
+      },
+      "RegisterSellerRequest" : {
+        "type" : "object",
+        "properties" : {
+          "fullName" : {
+            "type" : "string",
+            "description" : "Nombre completo",
+            "example" : "Ana Pérez",
+            "maxLength" : 100,
+            "minLength" : 0
+          },
+          "email" : {
+            "type" : "string",
+            "format" : "email",
+            "description" : "Correo electrónico (único)",
+            "example" : "ana.perez@demo.test",
+            "maxLength" : 160,
+            "minLength" : 0
+          },
+          "documentId" : {
+            "type" : "string",
+            "description" : "Documento de identidad (único, de 4 a 20 caracteres)",
+            "example" : "CC-1020304050",
+            "maxLength" : 20,
+            "minLength" : 0
+          },
+          "password" : {
+            "type" : "string",
+            "format" : "password",
+            "description" : "Contraseña (mínimo 8 caracteres, máximo 72 bytes)",
+            "example" : "<clave-de-al-menos-8-caracteres>",
+            "maxLength" : 2147483647,
+            "minLength" : 8,
+            "writeOnly" : true
+          },
+          "businessName" : {
+            "type" : "string",
+            "description" : "Razón social del vendedor",
+            "example" : "Comercial Demo S.A.S.",
+            "maxLength" : 100,
+            "minLength" : 0
+          },
+          "taxId" : {
+            "type" : "string",
+            "description" : "NIT o identificación tributaria",
+            "example" : "900123456",
+            "maxLength" : 20,
+            "minLength" : 0
+          }
+        },
+        "required" : [ "businessName", "documentId", "email", "fullName", "password", "taxId" ]
+      },
+      "SellerResponse" : {
+        "type" : "object",
+        "properties" : {
+          "sellerId" : {
+            "type" : "string"
+          },
+          "userId" : {
+            "type" : "string"
+          },
+          "businessName" : {
+            "type" : "string"
+          },
+          "taxId" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string"
+          }
+        }
+      },
+      "RegisterBuyerRequest" : {
+        "type" : "object",
+        "properties" : {
+          "fullName" : {
+            "type" : "string",
+            "description" : "Nombre completo",
+            "example" : "Ana Pérez",
+            "maxLength" : 100,
+            "minLength" : 0
+          },
+          "email" : {
+            "type" : "string",
+            "format" : "email",
+            "description" : "Correo electrónico (único)",
+            "example" : "ana.perez@demo.test",
+            "maxLength" : 160,
+            "minLength" : 0
+          },
+          "documentId" : {
+            "type" : "string",
+            "description" : "Documento de identidad (único, de 4 a 20 caracteres)",
+            "example" : "CC-1020304050",
+            "maxLength" : 20,
+            "minLength" : 0
+          },
+          "password" : {
+            "type" : "string",
+            "format" : "password",
+            "description" : "Contraseña (mínimo 8 caracteres, máximo 72 bytes)",
+            "example" : "<clave-de-al-menos-8-caracteres>",
+            "maxLength" : 2147483647,
+            "minLength" : 8,
+            "writeOnly" : true
+          },
+          "address" : {
+            "$ref" : "#/components/schemas/AddressRequest",
+            "description" : "Dirección"
+          }
+        },
+        "required" : [ "address", "documentId", "email", "fullName", "password" ]
+      },
+      "BuyerResponse" : {
+        "type" : "object",
+        "properties" : {
+          "buyerId" : {
+            "type" : "string"
+          },
+          "userId" : {
+            "type" : "string"
+          },
+          "mainAddress" : {
+            "$ref" : "#/components/schemas/AddressResponse"
+          },
+          "additionalAddresses" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/AddressResponse"
+            }
+          },
+          "commercialStatus" : {
+            "type" : "string"
+          }
+        }
+      },
+      "ChangePasswordRequest" : {
+        "type" : "object",
+        "properties" : {
+          "currentPassword" : {
+            "type" : "string",
+            "format" : "password",
+            "description" : "Contraseña actual",
+            "example" : "<contrasena-actual>",
+            "minLength" : 1,
+            "writeOnly" : true
+          },
+          "newPassword" : {
+            "type" : "string",
+            "format" : "password",
+            "description" : "Contraseña nueva (mínimo 12 caracteres)",
+            "example" : "<clave-nueva-de-al-menos-12-caracteres>",
+            "maxLength" : 2147483647,
+            "minLength" : 12,
+            "writeOnly" : true
+          }
+        },
+        "required" : [ "currentPassword", "newPassword" ]
+      },
+      "TokenResponse" : {
+        "type" : "object",
+        "properties" : {
+          "token" : {
+            "type" : "string"
+          },
+          "userId" : {
+            "type" : "string"
+          },
+          "role" : {
+            "type" : "string"
+          }
+        }
+      },
+      "ResetPasswordRequest" : {
+        "type" : "object",
+        "properties" : {
+          "token" : {
+            "type" : "string",
+            "description" : "Código recibido por correo",
+            "example" : "<codigo-recibido-por-correo>",
+            "maxLength" : 2048,
+            "minLength" : 0
+          },
+          "newPassword" : {
+            "type" : "string",
+            "format" : "password",
+            "description" : "Contraseña nueva (mínimo 12 caracteres)",
+            "example" : "<clave-nueva-de-al-menos-12-caracteres>",
+            "maxLength" : 2147483647,
+            "minLength" : 8,
+            "writeOnly" : true
+          }
+        },
+        "required" : [ "newPassword", "token" ]
+      },
+      "ForgotPasswordRequest" : {
+        "type" : "object",
+        "properties" : {
+          "email" : {
+            "type" : "string",
+            "format" : "email",
+            "description" : "Correo electrónico (único)",
+            "example" : "ana.perez@demo.test",
+            "maxLength" : 160,
+            "minLength" : 0
+          }
+        },
+        "required" : [ "email" ]
+      },
+      "LoginRequest" : {
+        "type" : "object",
+        "properties" : {
+          "email" : {
+            "type" : "string",
+            "format" : "email",
+            "description" : "Correo electrónico (único)",
+            "example" : "ana.perez@demo.test",
+            "minLength" : 1
+          },
+          "password" : {
+            "type" : "string",
+            "format" : "password",
+            "description" : "Contraseña (mínimo 8 caracteres, máximo 72 bytes)",
+            "example" : "<clave-de-al-menos-8-caracteres>",
+            "minLength" : 1,
+            "writeOnly" : true
+          }
+        },
+        "required" : [ "email", "password" ]
+      },
+      "VerifyEmailRequest" : {
+        "type" : "object",
+        "properties" : {
+          "token" : {
+            "type" : "string",
+            "description" : "Código recibido por correo",
+            "example" : "<codigo-recibido-por-correo>",
+            "maxLength" : 2048,
+            "minLength" : 0
+          }
+        },
+        "required" : [ "token" ]
+      },
+      "ResendVerificationRequest" : {
+        "type" : "object",
+        "properties" : {
+          "email" : {
+            "type" : "string",
+            "format" : "email",
+            "description" : "Correo electrónico (único)",
+            "example" : "ana.perez@demo.test",
+            "maxLength" : 160,
+            "minLength" : 0
+          }
+        },
+        "required" : [ "email" ]
+      },
+      "SalesLineResponse" : {
+        "type" : "object",
+        "properties" : {
+          "currency" : {
+            "type" : "string"
+          },
+          "orders" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "total" : {
+            "type" : "number"
+          }
+        }
+      },
+      "SalesReportResponse" : {
+        "type" : "object",
+        "properties" : {
+          "byCurrency" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/SalesLineResponse"
+            }
+          },
+          "orders" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }
+      },
+      "OrdersByStatusResponse" : {
+        "type" : "object",
+        "properties" : {
+          "byStatus" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "integer",
+              "format" : "int64"
+            }
+          },
+          "total" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }
+      },
+      "CartResponse" : {
+        "type" : "object",
+        "properties" : {
+          "cartId" : {
+            "type" : "string"
+          },
+          "buyerId" : {
+            "type" : "string"
+          },
+          "currency" : {
+            "type" : "string"
+          },
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ItemResponse"
+            }
+          },
+          "total" : {
+            "$ref" : "#/components/schemas/MoneyResponse"
+          },
+          "buyerName" : {
+            "type" : "string",
+            "description" : "Nombre completo del comprador"
+          },
+          "buyerEmail" : {
+            "type" : "string",
+            "description" : "Correo del comprador"
+          }
+        }
+      },
+      "ErrorResponse" : {
+        "description" : "Formato uniforme de error de la API.",
+        "properties" : {
+          "code" : {
+            "type" : "string"
+          },
+          "message" : {
+            "type" : "string"
+          },
+          "timestamp" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      }
+    },
+    "securitySchemes" : {
+      "bearerAuth" : {
+        "type" : "http",
+        "description" : "Token JWT de `POST /api/auth/login`. Se pega sin la palabra Bearer.",
+        "scheme" : "bearer",
+        "bearerFormat" : "JWT"
+      }
+    }
+  }
+}

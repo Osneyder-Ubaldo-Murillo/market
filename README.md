@@ -15,8 +15,9 @@ ejecutan con `./mvnw test` (ver la sección de pruebas); el número de pruebas c
 | Área | Estado |
 |---|---|
 | Dominio (agregados, value objects, specifications, 9 servicios, 19 puertos de salida) | Implementado |
-| Capa de aplicación (11 casos de uso) y API REST (55 endpoints, validación y errores uniformes) | Implementado |
+| Capa de aplicación (11 casos de uso) y API REST (82 endpoints, validación y errores uniformes) | Implementado |
 | Autenticación JWT (HS256), BCrypt, roles, propiedad del recurso, límite de intentos de login | Implementado |
+| Compra con cantidades, gestión logística (operador asignado, recogidas, novedades, entrega) y supervisión de pedidos con código legible `NM-PED-AAAA-XXXXXX` | Implementado (`market/docs/LOGISTICA_PEDIDOS.md`) |
 | Persistencia MySQL (repositorios JPA), esquema Flyway, bloqueos pesimistas de inventario, pedidos, devoluciones y reembolsos | Implementado |
 | Auditoría en MongoDB (perfil `prod`) o en log (desarrollo) | Implementado |
 | **Pagos** | **Simulados** (no cobran). Bloqueados con el perfil `prod` salvo autorización expresa |
@@ -156,6 +157,8 @@ cd market
 
   `--max-connections=500` evita "Too many connections" cuando la suite completa abre varios contextos de Spring. En Windows con
   Git Bash defina `MSYS_NO_PATHCONV=1` para `docker run`, pero no para `./mvnw`.
+- `bash scripts/diagnose.sh` diagnostica por qué no funciona la pila local (Docker, `.env`, contenedores, puertos, API y log) y dice la
+  causa y qué hacer; solo lee y nunca imprime secretos. Ver `market/docs/FUNCIONAMIENTO_Y_DIAGNOSTICO.md`.
 - `scripts/ci/smoke-test-image.sh <imagen>` arranca la imagen con MySQL y MongoDB desechables y comprueba su salud; el CI lo ejecuta.
 
 ## Cuentas de demostración antiguas (aviso)
@@ -174,6 +177,9 @@ procedimiento de `market/docs/ADMIN_INICIAL_ACTIVACION.md`.
 | `SDD/domain/*.md` | Modelo, value objects, enums, specifications y servicios de dominio |
 | `SDD/Output Ports.md` | Puertos de salida y sus adaptadores |
 | `market/docs/ENTORNOS.md` | Desarrollo y producción, variables, Docker Compose |
+| `market/docs/API_SWAGGER.md` | Documentación de la API con Swagger/OpenAPI: cómo abrirla, probar con el botón Authorize y mantenerla al día (`market/docs/api/openapi.json`) |
+| `market/docs/LOGISTICA_PEDIDOS.md` | Cantidades en la compra, código legible del pedido, módulo del operador logístico y del supervisor: reglas, permisos, endpoints y limitaciones |
+| `market/docs/FUNCIONAMIENTO_Y_DIAGNOSTICO.md` | Por qué funciona, cómo saber que funciona y, si no funciona, cómo encontrar la causa (`scripts/diagnose.sh`) |
 | `market/docs/migrations/` | Esquema, migraciones antiguas y procedimientos por tipo de instalación |
 | `market/docs/PAGOS_IDEMPOTENCIA.md` | Estado del pago simulado y diseño para una pasarela real |
 | `market/docs/CONCURRENCIA_BLOQUEOS.md`, `TRANSACCIONES.md` | Bloqueos, orden de bloqueo y transacciones |

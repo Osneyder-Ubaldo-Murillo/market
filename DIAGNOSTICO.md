@@ -8,7 +8,7 @@ Estado verificado contra el código y las pruebas (octubre de 2026). Para el det
 |---------|--------|-------------|
 | Dominio | ✅ Completada | Models, value objects, enums, specifications, excepciones, 9 servicios y 19 puertos de salida |
 | Adaptadores de salida | ✅ Completada | Repositorios JPA/MySQL, auditoría MongoDB, pago/envío/notificación simulados, BCrypt, JWT, configuración |
-| Capa de aplicación y API REST | ✅ Completada | 11 casos de uso transaccionales, 55 endpoints, Bean Validation y errores uniformes |
+| Capa de aplicación y API REST | ✅ Completada | 11 casos de uso transaccionales, 82 endpoints, Bean Validation y errores uniformes |
 | Seguridad | ✅ Completada | JWT stateless, roles, propiedad del recurso, `denyAll` por defecto, límite de intentos de login, CORS sin comodines |
 | Despliegue | ✅ Completada | Dockerfile, `docker-compose.yml`, perfil `prod`, Flyway, CI con pruebas MySQL, Dependency-Check y Trivy |
 | Integraciones reales | ⏳ Pendiente | Pasarela de pago, correo/SMS, transportadora (hoy simulados; los puertos son intercambiables) |
@@ -56,6 +56,16 @@ Cambios de esta fase, todos con pruebas (ver `market/docs/ENTORNOS.md` y `market
    operación auditada retenía su hilo ~30 s y el health tardaba lo mismo en dar 503.
 7. Pruebas nuevas de cabeceras de seguridad (sin cookies de sesión, `nosniff`, `X-Frame-Options`, no-store, HSTS solo bajo HTTPS).
 8. `.gitignore` protege `market/effective-pom` y `market/src/main/resources/db/migration/` (sin afectar a `db/schema`).
+
+9. **Alta de personal interno:** `POST /api/auth/register/staff` (solo ADMIN; solo `LOGISTICS_OPERATOR` o `SUPERVISOR`). Sin él no existía
+   forma de crear un operador logístico, y despachar y entregar exigen ese rol: **todo pedido pagado se quedaba en `PAID`**. Lo destapó
+   un recorrido completo contra la pila real; comprobado que el pedido atascado llegó a `DELIVERED`.
+10. **Diagnóstico:** `scripts/diagnose.sh` revisa Docker, `.env`, contenedores, puertos, la API y el log, y explica la causa de 12 fallos
+    conocidos; `market/docs/FUNCIONAMIENTO_Y_DIAGNOSTICO.md` documenta por qué funciona y cómo encontrar la causa cuando no.
+
+11. **Documentación con Swagger/OpenAPI:** 82 operaciones con resumen, roles, ejemplos de cuerpo, código de éxito real y errores comunes;
+    botón Authorize (esquema Bearer JWT); documento publicado en `market/docs/api/openapi.json`. La prueba `OpenApiDocumentationIntegrationTest`
+    impide que se desvíe del código (contrasta lo documentado como público o protegido con la seguridad real). Ver `market/docs/API_SWAGGER.md`.
 
 Verificado con servicios desechables: arranque desde cero con las 3 migraciones, 20 tablas validadas por Hibernate, datos
 conservados tras reiniciar la aplicación, y recuperación sin reiniciar tras aislar MySQL (503 con el formato de la API) y MongoDB.
