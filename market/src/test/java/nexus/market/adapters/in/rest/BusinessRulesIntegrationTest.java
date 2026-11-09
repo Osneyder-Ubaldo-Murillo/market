@@ -39,6 +39,7 @@ class BusinessRulesIntegrationTest extends RestTestSupport {
 
     private String deliveredOrder(int quantity) throws Exception {
         String orderId = paidOrder(quantity);
+        assignAndPick(admin, operator, orderId);
         send(HttpMethod.POST, "/api/orders/" + orderId + "/dispatch", operator,
                 body("warehouseId", catalog.warehouseId()), 200);
         send(HttpMethod.POST, "/api/orders/" + orderId + "/deliver", operator, "{}", 200);
@@ -119,6 +120,7 @@ class BusinessRulesIntegrationTest extends RestTestSupport {
     @Test
     void shippingCreatedFirst_thenDispatchedAndDelivered_leavesTheOrderDelivered() throws Exception {
         String orderId = paidOrder(1);
+        assignAndPick(admin, operator, orderId);
         String shippingId = read(send(HttpMethod.POST, "/api/orders/" + orderId + "/shippings", operator,
                 body("warehouseId", catalog.warehouseId()), 201), "$.shippingId");
         send(HttpMethod.POST, "/api/shippings/" + shippingId + "/dispatch", operator,
@@ -133,6 +135,7 @@ class BusinessRulesIntegrationTest extends RestTestSupport {
     @Test
     void orderDispatch_afterTheShippingWasAlreadyCreated_doesNotDuplicateIt() throws Exception {
         String orderId = paidOrder(1);
+        assignAndPick(admin, operator, orderId);
         send(HttpMethod.POST, "/api/orders/" + orderId + "/shippings", operator,
                 body("warehouseId", catalog.warehouseId()), 201);
         int status = status(HttpMethod.POST, "/api/orders/" + orderId + "/dispatch", operator,
@@ -150,14 +153,23 @@ class BusinessRulesIntegrationTest extends RestTestSupport {
         admin = staffToken(SystemRole.ADMIN);
         catalog = seedSellerCatalog(admin, new BigDecimal("10.00"));
         buyer = registerBuyer();
-        send(HttpMethod.POST, "/api/buyers/" + buyer.profileId() + "/cart/items", buyer.token(),
-                body("productId", catalog.productId(), "quantity", 11), 200);
-        int status = status(HttpMethod.POST, "/api/buyers/" + buyer.profileId() + "/orders", buyer.token(),
+        // Más de lo disponible se rechaza ya al agregar al carrito.
+        assertThat(send(HttpMethod.POST, "/api/buyers/" + buyer.profileId() + "/cart/items", buyer.token(),
+                body("productId", catalog.productId(), "quantity", 11), 400)).contains("INSUFFICIENT_INVENTORY");
+        // Y la reserva del pedido vuelve a comprobarlo: dos compradores que piden 6 de las 10 unidades.
+        Account other = registerBuyer();
+        for (Account b : new Account[] { buyer, other }) {
+            send(HttpMethod.POST, "/api/buyers/" + b.profileId() + "/cart/items", b.token(),
+                    body("productId", catalog.productId(), "quantity", 6), 200);
+        }
+        send(HttpMethod.POST, "/api/buyers/" + buyer.profileId() + "/orders", buyer.token(),
+                body("shippingAddress", addressJson()), 201);
+        int status = status(HttpMethod.POST, "/api/buyers/" + other.profileId() + "/orders", other.token(),
                 body("shippingAddress", addressJson()));
         assertThat(status).isBetween(400, 499);
         String inventory = send(HttpMethod.GET, "/api/inventory/" + catalog.inventoryId(), catalog.seller().token(),
                 null, 200);
-        assertThat((int) JsonPath.read(inventory, "$.quantity")).isEqualTo(10);
+        assertThat((int) JsonPath.read(inventory, "$.reservedQuantity")).isEqualTo(6);
     }
 
     @Test

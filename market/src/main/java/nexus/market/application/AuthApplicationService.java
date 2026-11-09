@@ -96,6 +96,17 @@ public class AuthApplicationService implements AuthUseCases {
     }
 
     @Override
+    @Transactional
+    public User registerStaff(FullName fullName, Email email, DocumentId documentId, SystemRole role,
+                              String rawPassword) {
+        String hash = passwordService.hash(requireHashablePassword(rawPassword));
+        User user = userManagement.registerStaff(fullName, email, documentId, role);
+        credentials.save(user.getUserId(), hash);
+        emailVerification.sendVerificationCode(user.getUserId(), email);
+        return user;
+    }
+
+    @Override
     public AuthResult login(Email email, String rawPassword, String clientAddress) {
         Objects.requireNonNull(email, "email es obligatorio");
         User user = users.findByEmail(email).orElse(null);

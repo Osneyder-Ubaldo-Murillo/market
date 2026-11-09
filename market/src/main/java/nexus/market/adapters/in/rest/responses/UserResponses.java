@@ -4,6 +4,10 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import nexus.market.adapters.in.rest.requests.CommonRequests.AddressRequest;
 
 /**
@@ -33,7 +37,16 @@ public final class UserResponses {
 
     /** Usuario con rol y estado. */
     public record UserResponse(String userId, String fullName, String email, String documentId,
-                               String role, String status, LocalDateTime createdAt, LocalDateTime updatedAt) {
+                               String role, String status, LocalDateTime createdAt, LocalDateTime updatedAt,
+                               @JsonInclude(JsonInclude.Include.NON_NULL) @Schema(description = "Identificador de comprador, si la cuenta es de un comprador") String buyerId,
+                               @JsonInclude(JsonInclude.Include.NON_NULL) @Schema(description = "Identificador de vendedor, si la cuenta es de un vendedor") String sellerId,
+                               @JsonInclude(JsonInclude.Include.NON_NULL) @Schema(description = "Nombre comercial, si la cuenta es de un vendedor") String businessName) {
+
+        /** Sin datos de perfil. */
+        public UserResponse(String userId, String fullName, String email, String documentId, String role, String status,
+                            LocalDateTime createdAt, LocalDateTime updatedAt) {
+            this(userId, fullName, email, documentId, role, status, createdAt, updatedAt, null, null, null);
+        }
     }
 
     /** Perfil de comprador. */

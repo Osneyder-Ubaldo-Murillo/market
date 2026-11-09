@@ -6,7 +6,10 @@ import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,23 +45,50 @@ public class EmailVerificationApplicationService implements EmailVerificationUse
     /** Vigencia del código de verificación. */
     public static final Duration TOKEN_VALIDITY = Duration.ofHours(24);
 
+    /** Propiedad que exige verificar el correo (por defecto {@code true}). */
+    public static final String REQUIRED_PROPERTY = "nexusmarket.auth.email-verification.required";
+
+    /** Propiedad que autoriza expresamente no exigirla con el perfil {@code prod}. */
+    public static final String SKIP_ALLOWED_PROPERTY = "nexusmarket.auth.email-verification.skip-allowed";
+
     private final UserRepositoryPort users;
     private final JwtServicePort jwt;
     private final NotificationPort notifications;
     private final AuditService audit;
+    private final boolean required;
 
+    @Autowired
     public EmailVerificationApplicationService(UserRepositoryPort users, JwtServicePort jwt,
-                                               NotificationPort notifications, AuditService audit) {
+                                               NotificationPort notifications, AuditService audit,
+                                               Environment environment) {
         this.users = Objects.requireNonNull(users, "users es obligatorio");
         this.jwt = Objects.requireNonNull(jwt, "jwt es obligatorio");
         this.notifications = Objects.requireNonNull(notifications, "notifications es obligatorio");
         this.audit = Objects.requireNonNull(audit, "audit es obligatorio");
+        this.required = !"false".equalsIgnoreCase(environment.getProperty(REQUIRED_PROPERTY, "true").trim());
+        if (!required && environment.acceptsProfiles(Profiles.of("prod"))) {
+            if (!"true".equalsIgnoreCase(environment.getProperty(SKIP_ALLOWED_PROPERTY, "").trim())) {
+                throw new IllegalStateException("No exigir la verificación del correo está bloqueado con el perfil prod. "
+                        + "Para una demostración académica declare " + SKIP_ALLOWED_PROPERTY
+                        + "=true (NEXUSMARKET_AUTH_EMAIL_VERIFICATION_SKIP_ALLOWED=true) o vuelva a exigirla.");
+            }
+            log.warn("[AUTH] Verificación de correo DESACTIVADA en producción por {}: cualquiera puede registrar "
+                    + "cualquier correo.", SKIP_ALLOWED_PROPERTY);
+        }
     }
 
     @Override
     public void sendVerificationCode(UserId userId, Email email) {
         Objects.requireNonNull(userId, "userId es obligatorio");
         Objects.requireNonNull(email, "email es obligatorio");
+        if (!required) {
+            // Demostración: la cuenta nace verificada y no se envía ningún código.
+            users.findById(userId).ifPresent(user -> {
+                user.verifyEmail();
+                users.save(user);
+            });
+            return;
+        }
         String token = jwt.issueEmailVerificationToken(userId, TOKEN_VALIDITY);
         AfterCommit.run(() -> {
             try {

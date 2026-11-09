@@ -11,9 +11,11 @@ import nexus.market.domain.valueobjects.Address;
 import nexus.market.domain.valueobjects.BuyerId;
 import nexus.market.domain.valueobjects.InvoiceId;
 import nexus.market.domain.valueobjects.Money;
+import nexus.market.domain.valueobjects.OrderCode;
 import nexus.market.domain.valueobjects.OrderId;
 import nexus.market.domain.valueobjects.OrderItem;
 import nexus.market.domain.valueobjects.OrderStatus;
+import nexus.market.domain.valueobjects.UserId;
 
 /**
  * Agregado raíz que representa un pedido de compra. Consolida productos de un
@@ -38,6 +40,11 @@ public class Order {
     private LocalDateTime updatedAt;
     /** Identificador de la transacción de cobro en la pasarela; nulo mientras no se pague (y en pedidos anteriores). */
     private String paymentTransactionId;
+    /** Código legible (NM-PED-AAAA-XXXXXX); estable durante todo el ciclo y único. */
+    private final OrderCode orderCode;
+    /** Operador logístico responsable del pedido; nulo mientras un administrador no lo asigne. */
+    private UserId assignedOperatorId;
+    private java.time.LocalDateTime assignedAt;
 
     public Order(OrderId orderId, BuyerId buyerId, List<OrderItem> items, OrderStatus status,
                  Address shippingAddress, InvoiceId invoiceId,
@@ -49,7 +56,19 @@ public class Order {
                  Address shippingAddress, InvoiceId invoiceId,
                  LocalDateTime deliveredAt, LocalDateTime createdAt, LocalDateTime updatedAt,
                  String paymentTransactionId) {
+        this(orderId, buyerId, items, status, shippingAddress, invoiceId, deliveredAt, createdAt, updatedAt,
+                paymentTransactionId, null, null, null);
+    }
+
+    public Order(OrderId orderId, BuyerId buyerId, List<OrderItem> items, OrderStatus status,
+                 Address shippingAddress, InvoiceId invoiceId,
+                 LocalDateTime deliveredAt, LocalDateTime createdAt, LocalDateTime updatedAt,
+                 String paymentTransactionId, OrderCode orderCode, UserId assignedOperatorId,
+                 LocalDateTime assignedAt) {
         this.paymentTransactionId = paymentTransactionId;
+        this.orderCode = orderCode;
+        this.assignedOperatorId = assignedOperatorId;
+        this.assignedAt = assignedAt;
         this.orderId = Objects.requireNonNull(orderId, "orderId es obligatorio");
         this.buyerId = Objects.requireNonNull(buyerId, "buyerId es obligatorio");
         if (items == null || items.isEmpty()) {
@@ -69,9 +88,33 @@ public class Order {
      * Crea un pedido pendiente de pago a partir de los ítems congelados.
      */
     public static Order create(BuyerId buyerId, List<OrderItem> items, Address shippingAddress) {
+        return create(buyerId, items, shippingAddress, OrderCode.generate(java.time.LocalDate.now()));
+    }
+
+    /** Igual que {@link #create(BuyerId, List, Address)} con un código legible ya verificado como no usado. */
+    public static Order create(BuyerId buyerId, List<OrderItem> items, Address shippingAddress, OrderCode orderCode) {
         LocalDateTime now = LocalDateTime.now();
         return new Order(OrderId.generate(), buyerId, items, OrderStatus.PENDING_PAYMENT,
-                shippingAddress, null, null, now, now);
+                shippingAddress, null, null, now, now, null, orderCode, null, null);
+    }
+
+    /**
+     * Asigna (o reasigna) el operador responsable. Solo un pedido pagado o ya despachado tiene trabajo logístico:
+     * antes del pago aún no hay nada que recoger y, entregado o cancelado, ya no hay nada que gestionar.
+     */
+    public void assignOperator(UserId operatorId) {
+        Objects.requireNonNull(operatorId, "operatorId es obligatorio");
+        if (status != OrderStatus.PAID && status != OrderStatus.DISPATCHED) {
+            throw new BusinessException("INVALID_STATE_TRANSITION",
+                    "Solo se puede asignar operador a un pedido PAID o DISPATCHED (actual: " + status.getCode() + ").");
+        }
+        this.assignedOperatorId = operatorId;
+        this.assignedAt = LocalDateTime.now();
+        touch();
+    }
+
+    public boolean isAssignedTo(UserId operatorId) {
+        return assignedOperatorId != null && assignedOperatorId.equals(operatorId);
     }
 
     /**
@@ -183,6 +226,18 @@ public class Order {
 
     public OrderId getOrderId() {
         return orderId;
+    }
+
+    public OrderCode getOrderCode() {
+        return orderCode;
+    }
+
+    public UserId getAssignedOperatorId() {
+        return assignedOperatorId;
+    }
+
+    public LocalDateTime getAssignedAt() {
+        return assignedAt;
     }
 
     public BuyerId getBuyerId() {

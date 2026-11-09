@@ -18,11 +18,13 @@ import nexus.market.domain.ports.out.ReturnRepositoryPort;
 import nexus.market.domain.ports.out.SellerRepositoryPort;
 import nexus.market.domain.ports.out.ShippingProviderPort;
 import nexus.market.domain.ports.out.ShippingRepositoryPort;
+import nexus.market.domain.ports.out.LogisticsRepositoryPort;
 import nexus.market.domain.ports.out.UserRepositoryPort;
 import nexus.market.domain.ports.out.WarehouseRepositoryPort;
 import nexus.market.domain.services.AuditService;
 import nexus.market.domain.services.CartService;
 import nexus.market.domain.services.InventoryService;
+import nexus.market.domain.services.LogisticsService;
 import nexus.market.domain.services.InvoiceService;
 import nexus.market.domain.services.OrderService;
 import nexus.market.domain.services.ProductCatalogService;
@@ -144,8 +146,14 @@ public class DomainConfiguration {
     public ShippingService shippingService(ShippingRepositoryPort shippings,
                                            OrderRepositoryPort orders,
                                            ShippingProviderPort shippingProvider,
-                                           AuditService audit) {
-        return new ShippingService(shippings, orders, shippingProvider, audit);
+                                           AuditService audit, LogisticsService logisticsService) {
+        return new ShippingService(shippings, orders, shippingProvider, audit, logisticsService);
+    }
+
+    @Bean
+    public LogisticsService logisticsService(LogisticsRepositoryPort logistics, OrderRepositoryPort orders,
+                                             UserRepositoryPort users, AuditService audit) {
+        return new LogisticsService(logistics, orders, users, audit);
     }
 
     @Bean
@@ -162,8 +170,8 @@ public class DomainConfiguration {
                                    ProductRepositoryPort products,
                                    BusinessConfigurationPort config,
                                    ActiveBuyerSpecification activeBuyer,
-                                   AuditService audit) {
-        return new CartService(carts, buyers, products, config, activeBuyer, audit);
+                                   AuditService audit, InventoryRepositoryPort inventories) {
+        return new CartService(carts, buyers, products, config, activeBuyer, audit, inventories);
     }
 
     @Bean
@@ -176,9 +184,9 @@ public class DomainConfiguration {
                                      InventoryService inventoryService,
                                      ShippingService shippingService,
                                      InvoiceService invoiceService,
-                                     AuditService audit) {
+                                     AuditService audit, LogisticsService logisticsService) {
         return new OrderService(orders, carts, buyers, payments, activeBuyer, orderModifiable,
-                inventoryService, shippingService, invoiceService, audit);
+                inventoryService, shippingService, invoiceService, audit, logisticsService);
     }
 
     @Bean

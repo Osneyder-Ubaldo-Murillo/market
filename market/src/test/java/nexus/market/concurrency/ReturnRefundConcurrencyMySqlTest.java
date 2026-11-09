@@ -93,6 +93,7 @@ class ReturnRefundConcurrencyMySqlTest extends RestTestSupport {
         orderId = read(send(HttpMethod.POST, "/api/buyers/" + buyer.profileId() + "/orders", buyer.token(),
                 body("shippingAddress", addressJson()), 201), "$.orderId");
         send(HttpMethod.POST, "/api/orders/" + orderId + "/payment", buyer.token(), body("paymentMethod", "CARD"), 200);
+        assignAndPick(admin, operator, orderId);
         send(HttpMethod.POST, "/api/orders/" + orderId + "/dispatch", operator,
                 body("warehouseId", catalog.warehouseId()), 200);
         send(HttpMethod.POST, "/api/orders/" + orderId + "/deliver", operator, "{}", 200);

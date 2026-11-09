@@ -35,4 +35,8 @@ public interface UserUseCases {
     void addBuyerAddress(BuyerId buyerId, Address address);
 
     User findUser(UserId userId);
+
+    /** Localiza una cuenta por UUID, correo o número de documento. Inexistente: USER_NOT_FOUND (404). */
+    User findUserByReference(String reference);
+
 }

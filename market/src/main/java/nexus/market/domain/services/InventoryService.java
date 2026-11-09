@@ -133,10 +133,8 @@ public class InventoryService {
     /** Salida definitiva por venta confirmada. */
     public void confirmSale(InventoryId inventoryId, Quantity quantity, Map<String, Object> metadata) {
         Inventory inventory = loadInventory(inventoryId);
-        if (!available.isSatisfiedBy(inventory, quantity)) {
-            throw new InsufficientInventoryException(
-                    "No hay existencias disponibles para vender " + quantity);
-        }
+        // Lo que se vende ya está reservado (no cuenta como disponible): Inventory.confirmSale exige que la cantidad no
+        // supere lo reservado y rechaza el inventario DAMAGED.
         inventory.confirmSale(quantity, metadata);
         inventories.save(inventory);
         audit.record(OperationType.INVENTORY_CONFIRM_SALE, AuditSeverity.INFO,

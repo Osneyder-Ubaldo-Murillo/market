@@ -1,5 +1,9 @@
 package nexus.market.adapters.in.rest.controllers;
 
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import nexus.market.application.AccessPolicy;
 import java.util.List;
 
@@ -26,6 +30,7 @@ import nexus.market.domain.valueobjects.WarehouseId;
  * Controlador REST de bodegas: creación de bodega del marketplace (central) y
  * bodegas privadas de vendedor, más consultas por id y por vendedor.
  */
+@Tag(name = "Bodegas", description = "Bodegas del marketplace y de los vendedores.")
 @RestController
 @RequestMapping("/api")
 @Profile("jpa")
@@ -40,12 +45,16 @@ public class WarehouseController {
     }
 
     /** Cuerpo: {name, address:{...}} — bodega central del marketplace. */
+    @Operation(summary = "Crear una bodega del marketplace", description = "Solo ADMIN.")
+    @ApiResponse(responseCode = "201", description = "Bodega creada.")
     @PostMapping("/warehouses/marketplace")
     public ResponseEntity<WarehouseResponse> createMarketplace(@Valid @RequestBody WarehouseCreateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(RestMappers.warehouse(
                 warehouseUseCases.createMarketplaceWarehouse(request.name(), request.address().toDomain())));
     }
 
+    @Operation(summary = "Crear una bodega de un vendedor", description = "Solo ADMIN.")
+    @ApiResponse(responseCode = "201", description = "Bodega creada.")
     @PostMapping("/sellers/{sellerId}/warehouses")
     public ResponseEntity<WarehouseResponse> createForSeller(@PathVariable String sellerId,
                                                              @Valid @RequestBody WarehouseCreateRequest request) {
@@ -54,6 +63,7 @@ public class WarehouseController {
                         request.name(), request.address().toDomain())));
     }
 
+    @Operation(summary = "Consultar una bodega", description = "VENDEDOR dueño, OPERADOR, ADMIN y SUPERVISOR.")
     @GetMapping("/warehouses/{warehouseId}")
     public ResponseEntity<WarehouseResponse> findById(@PathVariable String warehouseId) {
         policy.requireWarehouseReadable(warehouseId);
@@ -62,6 +72,7 @@ public class WarehouseController {
                 .orElseThrow(() -> new BusinessException("WAREHOUSE_NOT_FOUND", "Bodega inexistente."))));
     }
 
+    @Operation(summary = "Listar las bodegas de un vendedor", description = "VENDEDOR dueño, OPERADOR, ADMIN y SUPERVISOR.")
     @GetMapping("/sellers/{sellerId}/warehouses")
     public ResponseEntity<List<WarehouseResponse>> findBySeller(@PathVariable String sellerId) {
         policy.requireSellerWarehousesReadable(sellerId);
@@ -72,7 +83,7 @@ public class WarehouseController {
 
     /** Cuerpo de creación de bodega (nombre + dirección). */
     public record WarehouseCreateRequest(
-            @jakarta.validation.constraints.NotBlank(message = "name es obligatorio") @jakarta.validation.constraints.Size(max = 120, message = "name no puede exceder 120 caracteres") String name,
-            @jakarta.validation.constraints.NotNull(message = "address es obligatoria") @Valid AddressRequest address) {
+            @jakarta.validation.constraints.NotBlank(message = "name es obligatorio") @jakarta.validation.constraints.Size(max = 120, message = "name no puede exceder 120 caracteres") @Schema(description = "Nombre", example = "Producto de ejemplo") String name,
+            @jakarta.validation.constraints.NotNull(message = "address es obligatoria") @Valid @Schema(description = "Dirección") AddressRequest address) {
     }
 }

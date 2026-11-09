@@ -96,18 +96,19 @@ class InputRobustnessIntegrationTest extends RestTestSupport {
                     "{\"productId\":\"" + catalog.productId() + "\",\"quantity\":" + quantity + "}");
             assertThat(status).as("cantidad %s", quantity).isBetween(400, 499);
         }
-        // Un decimal se trunca a entero (comportamiento de Jackson): válido o 4xx, nunca 5xx.
+        // Un decimal se rechaza (no se trunca a entero) y no cambia el carrito.
         assertThat(status(HttpMethod.POST, cart, buyer.token(),
-                "{\"productId\":\"" + catalog.productId() + "\",\"quantity\":1.5}")).isLessThan(500);
+                "{\"productId\":\"" + catalog.productId() + "\",\"quantity\":1.5}")).isEqualTo(400);
+        send(HttpMethod.POST, cart, buyer.token(), "{\"productId\":\"" + catalog.productId() + "\",\"quantity\":1}", 200);
         // Sumar más allá del tope por producto se rechaza sin desbordar ni cambiar el carrito.
-        send(HttpMethod.PUT, cart + "/" + catalog.productId(), buyer.token(), "{\"quantity\":1000}", 200);
+        send(HttpMethod.PUT, cart + "/" + catalog.productId(), buyer.token(), "{\"quantity\":10}", 200);
         assertThat(status(HttpMethod.POST, cart, buyer.token(),
                 "{\"productId\":\"" + catalog.productId() + "\",\"quantity\":2147483647}")).isEqualTo(400);
         assertThat(status(HttpMethod.POST, cart, buyer.token(),
                 "{\"productId\":\"" + catalog.productId() + "\",\"quantity\":1}")).isEqualTo(400);
         send(HttpMethod.PUT, cart + "/" + catalog.productId(), buyer.token(), "{\"quantity\":1001}", 400);
         String cartAfter = send(HttpMethod.GET, "/api/buyers/" + buyer.profileId() + "/cart", buyer.token(), null, 200);
-        assertThat((int) com.jayway.jsonpath.JsonPath.read(cartAfter, "$.items[0].quantity")).isEqualTo(1000);
+        assertThat((int) com.jayway.jsonpath.JsonPath.read(cartAfter, "$.items[0].quantity")).isEqualTo(10);
 
         // Precios inválidos.
         for (String amount : new String[] { "-5", "0", "1e400", "99999999999999999999999999", "\"abc\"", "null" }) {

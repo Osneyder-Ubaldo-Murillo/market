@@ -42,6 +42,7 @@ public class OrderService {
     private final ShippingService shippingService;
     private final InvoiceService invoiceService;
     private final AuditService audit;
+    private final LogisticsService logistics;
 
     public OrderService(OrderRepositoryPort orders, CartRepositoryPort carts,
                         BuyerRepositoryPort buyers, PaymentServicePort payments,
@@ -50,7 +51,8 @@ public class OrderService {
                         InventoryService inventoryService,
                         ShippingService shippingService,
                         InvoiceService invoiceService,
-                        AuditService audit) {
+                        AuditService audit, LogisticsService logistics) {
+        this.logistics = Objects.requireNonNull(logistics, "logistics es obligatorio");
         this.orders = Objects.requireNonNull(orders, "orders es obligatorio");
         this.carts = Objects.requireNonNull(carts, "carts es obligatorio");
         this.buyers = Objects.requireNonNull(buyers, "buyers es obligatorio");
@@ -83,7 +85,7 @@ public class OrderService {
         for (CartItem item : cart.getItems()) {
             frozen.add(OrderItem.from(item));
         }
-        Order order = orders.save(Order.create(buyerId, frozen, shippingAddress));
+        Order order = orders.save(Order.create(buyerId, frozen, shippingAddress, nextOrderCode()));
 
         String reference = order.getOrderId().toString();
         for (CartItem item : inLockOrder(cart.getItems(), CartItem::getProductId)) {
@@ -155,6 +157,7 @@ public class OrderService {
         Order order = loadOrder(orderId);
 
         shippingService.createShipping(orderId, warehouseId);
+        logistics.requireReadyToDispatch(order);
         order.dispatch();
         orders.save(order);
         audit.record(OperationType.ORDER_DISPATCH, AuditSeverity.INFO,
@@ -165,6 +168,7 @@ public class OrderService {
     public void deliver(OrderId orderId) {
         Objects.requireNonNull(orderId, "orderId es obligatorio");
         Order order = loadOrder(orderId);
+        logistics.requireNoPendingIncidents(orderId);
         order.deliver();
         orders.save(order);
         audit.record(OperationType.ORDER_DELIVERY, AuditSeverity.INFO,
@@ -226,6 +230,18 @@ public class OrderService {
         java.util.List<T> sorted = new java.util.ArrayList<>(items);
         sorted.sort(java.util.Comparator.comparing(item -> productId.apply(item).value()));
         return sorted;
+    }
+
+    /** Código legible aún no usado; la restricción de unicidad de la base de datos sigue siendo la garantía final. */
+    private nexus.market.domain.valueobjects.OrderCode nextOrderCode() {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            nexus.market.domain.valueobjects.OrderCode candidate =
+                    nexus.market.domain.valueobjects.OrderCode.generate(java.time.LocalDate.now());
+            if (!orders.existsByCode(candidate)) {
+                return candidate;
+            }
+        }
+        throw new BusinessException("ORDER_CODE_UNAVAILABLE", "No se pudo generar un código de pedido; intente de nuevo.");
     }
 
     /** Una página de los pedidos del comprador, del más reciente al más antiguo. */

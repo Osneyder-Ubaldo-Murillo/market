@@ -19,6 +19,8 @@ public interface UserRepositoryPort {
 
     Optional<User> findByEmail(Email email);
 
+    Optional<User> findByDocumentId(DocumentId documentId);
+
     boolean existsByEmail(Email email);
 
     boolean existsByDocumentId(DocumentId documentId);

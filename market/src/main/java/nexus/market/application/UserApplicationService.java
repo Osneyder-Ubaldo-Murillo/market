@@ -75,4 +75,10 @@ public class UserApplicationService implements UserUseCases {
     public User findUser(UserId userId) {
         return delegate.findUser(userId);
     }
+
+    @Override
+    public User findUserByReference(String reference) {
+        return delegate.findUserByReference(reference);
+    }
+
 }

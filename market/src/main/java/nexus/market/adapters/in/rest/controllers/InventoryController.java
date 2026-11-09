@@ -1,5 +1,8 @@
 package nexus.market.adapters.in.rest.controllers;
 
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import nexus.market.application.AccessPolicy;
 import jakarta.validation.Valid;
 import org.springframework.context.annotation.Profile;
@@ -27,6 +30,7 @@ import nexus.market.domain.valueobjects.WarehouseId;
  * Controlador REST de inventario: creación del par (producto, bodega),
  * ingresos, reservas, liberaciones, ajustes y estados.
  */
+@Tag(name = "Inventario", description = "Existencias de un producto en una bodega. Las gestiona el vendedor dueño del producto.")
 @RestController
 @RequestMapping("/api/inventory")
 @Profile("jpa")
@@ -40,6 +44,8 @@ public class InventoryController {
         this.policy = policy;
     }
 
+    @Operation(summary = "Crear el inventario de un producto en una bodega", description = "Solo VENDEDOR dueño del producto y de la bodega.")
+    @ApiResponse(responseCode = "201", description = "Inventario creado.")
     @PostMapping
     public ResponseEntity<InventoryResponse> create(@Valid @RequestBody CreateInventoryRequest request) {
         policy.requireOwnProductAndWarehouse(request.productId(), request.warehouseId());
@@ -49,6 +55,7 @@ public class InventoryController {
                         WarehouseId.of(request.warehouseId()))));
     }
 
+    @Operation(summary = "Consultar un inventario", description = "VENDEDOR dueño, ADMIN y SUPERVISOR.")
     @GetMapping("/{inventoryId}")
     public ResponseEntity<InventoryResponse> findById(@PathVariable String inventoryId) {
         policy.requireInventoryReadable(inventoryId);
@@ -56,6 +63,7 @@ public class InventoryController {
                 RestMappers.inventory(inventoryUseCases.findById(InventoryId.of(inventoryId))));
     }
 
+    @Operation(summary = "Agregar stock", description = "Solo VENDEDOR dueño.")
     @PostMapping("/{inventoryId}/stock")
     public ResponseEntity<MessageResponse> addStock(@PathVariable String inventoryId,
                                                     @Valid @RequestBody QuantityRequest request) {
@@ -64,6 +72,7 @@ public class InventoryController {
         return ResponseEntity.ok(new MessageResponse("Ingreso registrado."));
     }
 
+    @Operation(hidden = true)
     @PostMapping("/{inventoryId}/reserve")
     public ResponseEntity<MessageResponse> reserve(@PathVariable String inventoryId,
                                                    @Valid @RequestBody QuantityRequest request) {
@@ -71,6 +80,7 @@ public class InventoryController {
         return ResponseEntity.ok(new MessageResponse("Inventario reservado."));
     }
 
+    @Operation(hidden = true)
     @PostMapping("/{inventoryId}/release")
     public ResponseEntity<MessageResponse> release(@PathVariable String inventoryId,
                                                    @Valid @RequestBody QuantityRequest request) {
@@ -79,6 +89,7 @@ public class InventoryController {
     }
 
     /** Ajuste físico de existencias (nueva existencia total). */
+    @Operation(summary = "Fijar la cantidad disponible", description = "Solo VENDEDOR dueño.")
     @PutMapping("/{inventoryId}/quantity")
     public ResponseEntity<MessageResponse> adjust(@PathVariable String inventoryId,
                                                   @Valid @RequestBody QuantityRequest request) {
@@ -87,6 +98,7 @@ public class InventoryController {
         return ResponseEntity.ok(new MessageResponse("Existencias ajustadas."));
     }
 
+    @Operation(summary = "Marcar el inventario como dañado", description = "Solo VENDEDOR dueño. Sin cuerpo.")
     @PostMapping("/{inventoryId}/damaged")
     public ResponseEntity<MessageResponse> markDamaged(@PathVariable String inventoryId) {
         policy.requireOwnInventory(inventoryId);
@@ -94,6 +106,7 @@ public class InventoryController {
         return ResponseEntity.ok(new MessageResponse("Inventario marcado como dañado."));
     }
 
+    @Operation(summary = "Marcar el inventario como activo", description = "Solo VENDEDOR dueño. Sin cuerpo.")
     @PostMapping("/{inventoryId}/active")
     public ResponseEntity<MessageResponse> markActive(@PathVariable String inventoryId) {
         policy.requireOwnInventory(inventoryId);

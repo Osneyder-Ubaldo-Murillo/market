@@ -1,5 +1,8 @@
 package nexus.market.adapters.in.rest.controllers;
 
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import nexus.market.application.AccessPolicy;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,6 +38,7 @@ import nexus.market.domain.valueobjects.ReturnReason;
  * dentro del plazo), aprobación/rechazo, procesamiento de la devolución y
  * proceso del reembolso contra la pasarela.
  */
+@Tag(name = "Devoluciones y reembolsos", description = "Solicitud, aprobación y proceso de devoluciones y de sus reembolsos.")
 @RestController
 @RequestMapping("/api")
 @Profile("jpa")
@@ -48,6 +52,8 @@ public class ReturnController {
         this.policy = policy;
     }
 
+    @Operation(summary = "Solicitar una devolución", description = "Solo COMPRADOR dueño. Un pedido admite una devolución; los productos deben ser del pedido y no se devuelve más de lo comprado. reason es DAMAGED, WRONG_ITEM, NOT_AS_DESCRIBED u OTHER.")
+    @ApiResponse(responseCode = "201", description = "Devolución solicitada.")
     @PostMapping("/orders/{orderId}/returns")
     public ResponseEntity<ReturnResponse> request(@PathVariable String orderId,
                                                   @Valid @RequestBody CreateReturnRequest request) {
@@ -63,6 +69,7 @@ public class ReturnController {
                 .body(RestMappers.returnOrder(returnUseCases.requestReturn(OrderId.of(orderId), lines)));
     }
 
+    @Operation(summary = "Consultar una devolución", description = "COMPRADOR dueño, OPERADOR, ADMIN y SUPERVISOR.")
     @GetMapping("/returns/{returnId}")
     public ResponseEntity<ReturnResponse> findById(@PathVariable String returnId) {
         policy.requireReturnReadable(returnId);
@@ -71,24 +78,28 @@ public class ReturnController {
     }
 
     /** Aprueba la devolución y crea el reembolso (devuelve el reembolso). */
+    @Operation(summary = "Aprobar una devolución", description = "Solo ADMIN. Crea el reembolso en estado PENDING: la respuesta trae su refundId.")
     @PostMapping("/returns/{returnId}/approve")
     public ResponseEntity<RefundResponse> approve(@PathVariable String returnId) {
         return ResponseEntity.ok(RestMappers.refund(
                 returnUseCases.approveReturn(ReturnId.of(returnId))));
     }
 
+    @Operation(summary = "Rechazar una devolución", description = "Solo ADMIN.")
     @PostMapping("/returns/{returnId}/reject")
     public ResponseEntity<MessageResponse> reject(@PathVariable String returnId) {
         returnUseCases.rejectReturn(ReturnId.of(returnId));
         return ResponseEntity.ok(new MessageResponse("Devolución rechazada."));
     }
 
+    @Operation(summary = "Procesar la devolución recibida", description = "Solo OPERADOR logístico.")
     @PostMapping("/returns/{returnId}/process")
     public ResponseEntity<MessageResponse> process(@PathVariable String returnId) {
         returnUseCases.processReturn(ReturnId.of(returnId));
         return ResponseEntity.ok(new MessageResponse("Devolución procesada."));
     }
 
+    @Operation(summary = "Procesar un reembolso", description = "Solo ADMIN. Repetirlo responde 409: un reembolso PROCESSED no se procesa dos veces.")
     @PostMapping("/refunds/{refundId}/process")
     public ResponseEntity<MessageResponse> processRefund(@PathVariable String refundId) {
         returnUseCases.processRefund(RefundId.of(refundId));

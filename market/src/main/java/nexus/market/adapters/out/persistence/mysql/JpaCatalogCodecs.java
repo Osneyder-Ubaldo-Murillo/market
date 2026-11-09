@@ -89,6 +89,8 @@ ProductStatus productStatus(String code) {
             case "ACTIVE" -> ProductStatus.ACTIVE;
             case "INACTIVE" -> ProductStatus.INACTIVE;
             case "OUT_OF_STOCK" -> ProductStatus.OUT_OF_STOCK;
+            case "SUSPENDED" -> ProductStatus.SUSPENDED;
+            case "DISCONTINUED" -> ProductStatus.DISCONTINUED;
             default -> throw new IllegalArgumentException("Estado de producto desconocido: " + code);
         };
     }

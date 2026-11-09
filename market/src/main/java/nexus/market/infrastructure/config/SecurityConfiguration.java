@@ -115,6 +115,7 @@ public class SecurityConfiguration {
 
                         // ---- Usuarios y vendedores (administración) ----
                         .requestMatchers(HttpMethod.POST, "/api/auth/register/seller").hasRole(ADMIN)
+                        .requestMatchers(HttpMethod.POST, "/api/auth/register/staff").hasRole(ADMIN)
                         // Rotación de la contraseña del propio administrador (el destino es siempre el usuario autenticado).
                         .requestMatchers(HttpMethod.POST, "/api/auth/password").hasRole(ADMIN)
                         .requestMatchers(HttpMethod.POST, "/api/sellers/*/approve").hasRole(ADMIN)
@@ -145,6 +146,21 @@ public class SecurityConfiguration {
                                 "/api/orders/*/shippings", "/api/shippings/*/dispatch",
                                 "/api/shippings/*/in-transit", "/api/shippings/*/deliver").hasRole(OPERATOR)
 
+                        // ---- Gestión logística: el operador gestiona sus pedidos; un administrador asigna ----
+                        .requestMatchers(HttpMethod.PUT, "/api/logistics/orders/*/operator").hasRole(ADMIN)
+                        .requestMatchers(HttpMethod.GET, "/api/logistics/orders", "/api/logistics/orders/*")
+                        .hasRole(OPERATOR)
+                        .requestMatchers(HttpMethod.POST, "/api/logistics/orders/*/pickups",
+                                "/api/logistics/orders/*/incidents").hasRole(OPERATOR)
+
+                        // ---- Supervisión de pedidos y atención de novedades ----
+                        .requestMatchers(HttpMethod.GET, "/api/supervision/orders", "/api/supervision/orders/*",
+                                "/api/supervision/incidents", "/api/supervision/incidents/*")
+                        .hasAnyRole(ADMIN, SUPERVISOR)
+                        .requestMatchers(HttpMethod.POST, "/api/supervision/incidents/*/instructions",
+                                "/api/supervision/incidents/*/responsible", "/api/supervision/incidents/*/resolve")
+                        .hasAnyRole(ADMIN, SUPERVISOR)
+
                         // ---- Facturación (el vendedor queda excluido por ahora) ----
                         .requestMatchers(HttpMethod.GET, "/api/buyers/*/invoices").hasRole(BUYER)
                         .requestMatchers(HttpMethod.GET, "/api/invoices/*", "/api/orders/*/invoice")
@@ -160,9 +176,13 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.POST, "/api/returns/*/process").hasRole(OPERATOR)
 
                         // ---- Catálogo: el vendedor administra solo sus productos ----
+                        .requestMatchers(HttpMethod.GET, "/api/sellers/*/products", "/api/sellers/*/products/by-sku/*")
+                        .hasAnyRole(SELLER, ADMIN, SUPERVISOR)
                         .requestMatchers(HttpMethod.POST, "/api/products").hasRole(SELLER)
-                        .requestMatchers(HttpMethod.POST, "/api/products/*/publish", "/api/products/*/unpublish")
+                        .requestMatchers(HttpMethod.POST, "/api/products/*/publish", "/api/products/*/unpublish",
+                                "/api/products/*/suspend", "/api/products/*/discontinue", "/api/products/*/variants")
                         .hasRole(SELLER)
+                        .requestMatchers(HttpMethod.DELETE, "/api/products/*/variants/*").hasRole(SELLER)
                         .requestMatchers(HttpMethod.PUT, "/api/products/*/price").hasRole(SELLER)
                         .requestMatchers(HttpMethod.PUT, "/api/products/*").hasRole(SELLER)
 
@@ -176,9 +196,12 @@ public class SecurityConfiguration {
                         // El operador logístico no tiene acceso mientras no exista relación operador-bodega.
                         // reserve/release no se exponen: se ejecutan dentro del flujo de pedidos.
                         .requestMatchers(HttpMethod.POST, "/api/inventory", "/api/inventory/*/stock",
-                                "/api/inventory/*/damaged", "/api/inventory/*/active").hasRole(SELLER)
-                        .requestMatchers(HttpMethod.PUT, "/api/inventory/*/quantity").hasRole(SELLER)
-                        .requestMatchers(HttpMethod.GET, "/api/inventory/*").hasAnyRole(SELLER, ADMIN, SUPERVISOR)
+                                "/api/inventory/*/damaged", "/api/inventory/*/active").hasAnyRole(SELLER, OPERATOR)
+                        .requestMatchers(HttpMethod.PUT, "/api/inventory/*/quantity").hasAnyRole(SELLER, OPERATOR)
+                        .requestMatchers(HttpMethod.GET, "/api/inventory/*").hasAnyRole(SELLER, OPERATOR, ADMIN, SUPERVISOR)
+
+                        // ---- Reportes administrativos: solo lectura para administración y supervisión ----
+                        .requestMatchers(HttpMethod.GET, "/api/reports/*").hasAnyRole(ADMIN, SUPERVISOR)
 
                         // ---- Monitoreo restringido ----
                         .requestMatchers("/actuator/**").hasRole(ADMIN)

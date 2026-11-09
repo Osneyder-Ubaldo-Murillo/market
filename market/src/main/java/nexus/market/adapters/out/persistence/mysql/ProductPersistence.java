@@ -12,6 +12,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -24,13 +25,15 @@ import nexus.market.domain.valueobjects.ProductId;
 import nexus.market.domain.valueobjects.ProductName;
 import nexus.market.domain.valueobjects.ProductStatus;
 import nexus.market.domain.valueobjects.SellerId;
+import nexus.market.domain.valueobjects.SellerSku;
 
 /**
  * Entidad JPA de {@link Product} (tabla {@code products}). Las especificaciones
  * técnicas se guardan como JSON (texto) en {@code specifications_json}.
  */
 @Entity
-@Table(name = "products")
+@Table(name = "products", uniqueConstraints = @UniqueConstraint(name = "uk_products_seller_sku",
+        columnNames = { "seller_id", "seller_sku" }))
 class ProductEntity {
 
     @Id
@@ -58,8 +61,11 @@ class ProductEntity {
     @Column(name = "status", length = 30, nullable = false)
     String status;
 
+    @Column(name = "seller_sku", length = 40)
+    String sellerSku;
+
     @Lob
-    @Column(name = "specifications_json", nullable = false)
+    @Column(name = "specifications_json", nullable = false, length = 65535)
     String specificationsJson;
 
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -82,6 +88,7 @@ class ProductEntity {
         entity.priceCurrency = product.getPrice().getCurrency().getCurrencyCode();
         entity.status = product.getStatus().getCode();
         entity.specificationsJson = JpaValueTypes.JsonCodec.toJson(product.getSpecifications());
+        entity.sellerSku = product.getSellerSku() == null ? null : product.getSellerSku().getValue();
         entity.createdAt = product.getCreatedAt();
         entity.updatedAt = product.getUpdatedAt();
         return entity;
@@ -94,7 +101,7 @@ class ProductEntity {
                 ProductName.of(name), ProductDescription.of(description),
                 catalogs.productType(productType),
                 Money.of(priceAmount, priceCurrency), catalogs.productStatus(status),
-                specifications, createdAt, updatedAt);
+                specifications, createdAt, updatedAt, sellerSku == null ? null : SellerSku.of(sellerSku));
     }
 }
 
@@ -125,6 +132,42 @@ class JpaProductRepositoryPort extends JpaRepositorySupport implements ProductRe
                 "select p from ProductEntity p where p.sellerId = :sid",
                 Map.of("sid", sellerId.value()))
                 .stream().map(ProductEntity::toDomain).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<Product> findBySellerId(SellerId sellerId, String statusCode, int offset, int limit) {
+        return queryPage(ProductEntity.class,
+                "select p from ProductEntity p where p.sellerId = :sid" + statusFilter(statusCode)
+                        + " order by p.name, p.productId",
+                sellerParams(sellerId, statusCode), offset, limit)
+                .stream().map(ProductEntity::toDomain).collect(Collectors.toList());
+    }
+
+    @Override
+    public long countBySellerId(SellerId sellerId, String statusCode) {
+        return count("select count(p) from ProductEntity p where p.sellerId = :sid" + statusFilter(statusCode),
+                sellerParams(sellerId, statusCode));
+    }
+
+    private static String statusFilter(String statusCode) {
+        return statusCode == null ? "" : " and p.status = :status";
+    }
+
+    private static Map<String, Object> sellerParams(SellerId sellerId, String statusCode) {
+        Map<String, Object> params = new java.util.HashMap<>();
+        params.put("sid", sellerId.value());
+        if (statusCode != null) {
+            params.put("status", statusCode);
+        }
+        return params;
+    }
+
+    @Override
+    public Optional<Product> findBySellerIdAndSellerSku(SellerId sellerId, SellerSku sellerSku) {
+        return querySingle(ProductEntity.class,
+                "select p from ProductEntity p where p.sellerId = :sid and p.sellerSku = :sku",
+                Map.of("sid", sellerId.value(), "sku", sellerSku.getValue()))
+                .map(ProductEntity::toDomain);
     }
 
     @Override

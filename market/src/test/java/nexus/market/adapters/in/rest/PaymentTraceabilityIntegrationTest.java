@@ -89,6 +89,7 @@ class PaymentTraceabilityIntegrationTest extends RestTestSupport {
         String orderId = pendingOrder(1);
         String transactionId = pay(orderId);
         String operator = staffToken(SystemRole.LOGISTICS_OPERATOR);
+        assignAndPick(admin, operator, orderId);
         send(HttpMethod.POST, "/api/orders/" + orderId + "/dispatch", operator,
                 body("warehouseId", catalog.warehouseId()), 200);
         send(HttpMethod.POST, "/api/orders/" + orderId + "/deliver", operator, "{}", 200);
@@ -169,6 +170,7 @@ class PaymentTraceabilityIntegrationTest extends RestTestSupport {
         String orderId = pendingOrder(1);
         pay(orderId);
         String operator = staffToken(SystemRole.LOGISTICS_OPERATOR);
+        assignAndPick(admin, operator, orderId);
         send(HttpMethod.POST, "/api/orders/" + orderId + "/dispatch", operator,
                 body("warehouseId", catalog.warehouseId()), 200);
         send(HttpMethod.POST, "/api/orders/" + orderId + "/deliver", operator, "{}", 200);

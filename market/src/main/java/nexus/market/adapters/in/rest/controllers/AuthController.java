@@ -1,5 +1,9 @@
 package nexus.market.adapters.in.rest.controllers;
 
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.context.annotation.Profile;
@@ -22,6 +26,10 @@ import nexus.market.adapters.in.rest.requests.AuthRequests.VerifyEmailRequest;
 import nexus.market.adapters.in.rest.responses.UserResponses.MessageResponse;
 import nexus.market.adapters.in.rest.requests.AuthRequests.RegisterBuyerRequest;
 import nexus.market.adapters.in.rest.requests.AuthRequests.RegisterSellerRequest;
+import nexus.market.adapters.in.rest.requests.AuthRequests.RegisterStaffRequest;
+import nexus.market.adapters.in.rest.responses.UserResponses.UserResponse;
+import nexus.market.domain.models.User;
+import nexus.market.domain.valueobjects.SystemRole;
 import nexus.market.adapters.in.rest.responses.UserResponses.BuyerResponse;
 import nexus.market.adapters.in.rest.responses.UserResponses.SellerResponse;
 import nexus.market.adapters.in.rest.responses.UserResponses.TokenResponse;
@@ -46,6 +54,7 @@ import nexus.market.domain.valueobjects.UserId;
  * Controlador REST de autenticación: registro de compradores/vendedores con
  * contraseña y login (devuelve token JWT).
  */
+@Tag(name = "Autenticación y cuentas", description = "Registro, verificación de correo, inicio de sesión, recuperación de contraseña y alta de personal interno.")
 @RestController
 @RequestMapping("/api/auth")
 @Profile("jpa")
@@ -78,6 +87,9 @@ public class AuthController {
     }
 
     /** Registra un comprador con contraseña. Devuelve el perfil creado. */
+    @Operation(summary = "Registrar un comprador", description = "Pública. Crea la cuenta y el perfil de comprador. El correo debe verificarse antes de iniciar sesión.")
+    @SecurityRequirements
+    @ApiResponse(responseCode = "201", description = "Cuenta creada. Falta verificar el correo.")
     @PostMapping("/register/buyer")
     public ResponseEntity<BuyerResponse> registerBuyer(@Valid @RequestBody RegisterBuyerRequest request,
                                                        HttpServletRequest httpRequest) {
@@ -92,7 +104,27 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.CREATED).body(RestMappers.buyer(buyer));
     }
 
+    /**
+     * Da de alta personal interno (operador logístico o supervisor). Solo ADMIN. Es el único camino para crear un operador:
+     * sin él, ningún pedido pagado podría despacharse ni entregarse.
+     */
+    @Operation(summary = "Dar de alta personal interno", description = "Solo ADMIN. Crea un operador logístico o un supervisor (role = LOGISTICS_OPERATOR o SUPERVISOR, nunca ADMIN). Es el único camino para crear un operador, necesario para despachar y entregar pedidos. El correo debe verificarse.")
+    @ApiResponse(responseCode = "201", description = "Cuenta creada. Falta verificar el correo.")
+    @PostMapping("/register/staff")
+    public ResponseEntity<UserResponse> registerStaff(@Valid @RequestBody RegisterStaffRequest request) {
+        SystemRole role = "SUPERVISOR".equals(request.role()) ? SystemRole.supervisor() : SystemRole.logisticsOperator();
+        User user = authUseCases.registerStaff(
+                FullName.of(request.fullName()),
+                Email.of(request.email()),
+                DocumentId.of(request.documentId()),
+                role,
+                request.password());
+        return ResponseEntity.status(HttpStatus.CREATED).body(RestMappers.user(user));
+    }
+
     /** Registra un vendedor con contraseña (queda PENDING_VERIFICATION). */
+    @Operation(summary = "Registrar un vendedor", description = "Solo ADMIN. El vendedor queda pendiente de aprobación y de verificar su correo.")
+    @ApiResponse(responseCode = "201", description = "Vendedor creado, pendiente de aprobación y de verificar el correo.")
     @PostMapping("/register/seller")
     public ResponseEntity<SellerResponse> registerSeller(@Valid @RequestBody RegisterSellerRequest request) {
         Seller seller = authUseCases.registerSeller(
@@ -110,6 +142,7 @@ public class AuthController {
      * Rotación de la contraseña del administrador AUTENTICADO. El destino sale del token (nunca del cuerpo ni de la
      * ruta). Devuelve un token nuevo; los emitidos antes del cambio dejan de valer.
      */
+    @Operation(summary = "Cambiar la contraseña del administrador", description = "Solo ADMIN, sobre su propia cuenta.")
     @PostMapping("/password")
     public ResponseEntity<TokenResponse> changePassword(Authentication authentication,
                                                         @Valid @RequestBody ChangePasswordRequest request) {
@@ -123,6 +156,9 @@ public class AuthController {
      * Solicita un código de recuperación de contraseña. Responde siempre 202 con el mismo mensaje, exista o no el email.
      * Limitado por email y por cliente (429).
      */
+    @Operation(summary = "Solicitar un código de recuperación", description = "Pública. Responde 202 siempre, exista o no el correo, para no revelar qué cuentas existen. No aplica al ADMIN.")
+    @SecurityRequirements
+    @ApiResponse(responseCode = "202", description = "Solicitud aceptada; se responde igual exista o no la cuenta.")
     @PostMapping("/password/forgot")
     public ResponseEntity<MessageResponse> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request,
                                                           HttpServletRequest httpRequest) {
@@ -133,6 +169,8 @@ public class AuthController {
     }
 
     /** Restablece la contraseña con el código recibido (válido 30 minutos y de un solo uso). */
+    @Operation(summary = "Restablecer la contraseña con el código", description = "Pública. El código es de un solo uso y vence a los 30 minutos.")
+    @SecurityRequirements
     @PostMapping("/password/reset")
     public ResponseEntity<MessageResponse> resetPassword(@Valid @RequestBody ResetPasswordRequest request,
                                                          HttpServletRequest httpRequest) {
@@ -142,6 +180,8 @@ public class AuthController {
     }
 
     /** Verifica el correo con el código recibido; sin verificar no se puede iniciar sesión. */
+    @Operation(summary = "Verificar el correo", description = "Pública. Con el código recibido por correo la cuenta ya puede iniciar sesión.")
+    @SecurityRequirements
     @PostMapping("/email/verify")
     public ResponseEntity<MessageResponse> verifyEmail(@Valid @RequestBody VerifyEmailRequest request,
                                                        HttpServletRequest httpRequest) {
@@ -151,6 +191,9 @@ public class AuthController {
     }
 
     /** Reenvía el código de verificación. Responde siempre 202 con el mismo mensaje. */
+    @Operation(summary = "Reenviar el código de verificación", description = "Pública. Responde 202 siempre, para no revelar qué cuentas existen.")
+    @SecurityRequirements
+    @ApiResponse(responseCode = "202", description = "Solicitud aceptada; se responde igual exista o no la cuenta.")
     @PostMapping("/email/resend")
     public ResponseEntity<MessageResponse> resendVerification(@Valid @RequestBody ResendVerificationRequest request,
                                                               HttpServletRequest httpRequest) {
@@ -160,6 +203,8 @@ public class AuthController {
                 "Si el correo corresponde a una cuenta pendiente de verificar, recibirá un código nuevo."));
     }
 
+    @Operation(summary = "Iniciar sesión", description = "Pública. Devuelve el token JWT: cópielo en el botón Authorize para probar los endpoints protegidos. Hay un límite de intentos (429) y tres fallos consecutivos desde al menos dos orígenes bloquean la cuenta hasta que un ADMIN la reactive.")
+    @SecurityRequirements
     @PostMapping("/login")
     public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request,
                                                HttpServletRequest httpRequest) {

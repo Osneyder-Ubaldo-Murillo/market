@@ -27,9 +27,11 @@ public class ShippingService {
     private final OrderRepositoryPort orders;
     private final ShippingProviderPort shippingProvider;
     private final AuditService audit;
+    private final LogisticsService logistics;
 
     public ShippingService(ShippingRepositoryPort shippings, OrderRepositoryPort orders,
-                           ShippingProviderPort shippingProvider, AuditService audit) {
+                           ShippingProviderPort shippingProvider, AuditService audit, LogisticsService logistics) {
+        this.logistics = Objects.requireNonNull(logistics, "logistics es obligatorio");
         this.shippings = Objects.requireNonNull(shippings, "shippings es obligatorio");
         this.orders = Objects.requireNonNull(orders, "orders es obligatorio");
         this.shippingProvider = Objects.requireNonNull(shippingProvider, "shippingProvider es obligatorio");
@@ -51,6 +53,8 @@ public class ShippingService {
             throw new BusinessException("INVALID_STATE_TRANSITION",
                     "Solo se puede crear el envío de un pedido PAID.");
         }
+        // El alistamiento empieza cuando todo lo físico del pedido ya fue recogido y no hay novedades abiertas.
+        logistics.requireReadyToDispatch(order);
         Shipping shipping = shippings.save(Shipping.create(orderId, warehouseId));
         audit.record(OperationType.SHIPPING_CREATION, AuditSeverity.INFO,
                 order.getBuyerId().toString(), "Envío creado: " + shipping.getShippingId());
@@ -69,6 +73,7 @@ public class ShippingService {
         Order order = orders.findById(shipping.getOrderId())
                 .orElseThrow(() -> new BusinessException("ORDER_NOT_FOUND", "Pedido inexistente."));
 
+        logistics.requireReadyToDispatch(order);
         DeliveryInfo effective = deliveryInfo;
         if (!deliveryInfo.hasTrackingNumber()) {
             effective = shippingProvider.createShipment(order.getOrderId(),
@@ -107,6 +112,7 @@ public class ShippingService {
 
         Order order = orders.findById(shipping.getOrderId())
                 .orElseThrow(() -> new BusinessException("ORDER_NOT_FOUND", "Pedido inexistente."));
+        requireDeliverable(order);
         order.deliver();
 
         shippings.save(shipping);
@@ -115,6 +121,11 @@ public class ShippingService {
                 order.getBuyerId().toString(), "Envío entregado: " + shippingId);
         audit.record(OperationType.ORDER_DELIVERY, AuditSeverity.INFO,
                 order.getBuyerId().toString(), "Pedido entregado: " + order.getOrderId());
+    }
+
+    /** Un envío con novedades sin resolver no se entrega. */
+    private void requireDeliverable(Order order) {
+        logistics.requireNoPendingIncidents(order.getOrderId());
     }
 
     public Shipping findById(ShippingId shippingId) {

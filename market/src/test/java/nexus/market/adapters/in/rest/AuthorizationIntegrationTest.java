@@ -165,18 +165,24 @@ class AuthorizationIntegrationTest extends RestTestSupport {
                 rule("POST", "/api/returns/x/process", OPERATOR),
                 rule("POST", "/api/products", SELLER),
                 rule("POST", "/api/products/x/publish", SELLER),
+                rule("GET", "/api/sellers/x/products", SELLER, ADMIN, SUPERVISOR),
+                rule("GET", "/api/sellers/x/products/by-sku/y", SELLER, ADMIN, SUPERVISOR),
                 rule("POST", "/api/products/x/unpublish", SELLER),
+                rule("POST", "/api/products/x/suspend", SELLER),
+                rule("POST", "/api/products/x/discontinue", SELLER),
+                rule("POST", "/api/products/x/variants", SELLER),
+                rule("DELETE", "/api/products/x/variants/v", SELLER),
                 rule("PUT", "/api/products/x/price", SELLER),
                 rule("POST", "/api/warehouses/marketplace", ADMIN),
                 rule("POST", "/api/sellers/x/warehouses", ADMIN),
                 rule("GET", "/api/warehouses/x", SELLER, OPERATOR, ADMIN, SUPERVISOR),
                 rule("GET", "/api/sellers/x/warehouses", SELLER, OPERATOR, ADMIN, SUPERVISOR),
-                rule("POST", "/api/inventory", SELLER),
-                rule("POST", "/api/inventory/x/stock", SELLER),
-                rule("POST", "/api/inventory/x/damaged", SELLER),
-                rule("POST", "/api/inventory/x/active", SELLER),
-                rule("PUT", "/api/inventory/x/quantity", SELLER),
-                rule("GET", "/api/inventory/x", SELLER, ADMIN, SUPERVISOR),
+                rule("POST", "/api/inventory", SELLER, OPERATOR),
+                rule("POST", "/api/inventory/x/stock", SELLER, OPERATOR),
+                rule("POST", "/api/inventory/x/damaged", SELLER, OPERATOR),
+                rule("POST", "/api/inventory/x/active", SELLER, OPERATOR),
+                rule("PUT", "/api/inventory/x/quantity", SELLER, OPERATOR),
+                rule("GET", "/api/inventory/x", SELLER, OPERATOR, ADMIN, SUPERVISOR),
                 // reserve/release no se exponen a ningún rol externo
                 rule("POST", "/api/inventory/x/reserve"),
                 rule("POST", "/api/inventory/x/release"),
@@ -341,12 +347,10 @@ class AuthorizationIntegrationTest extends RestTestSupport {
     }
 
     @Test
-    void operator_hasNoInventoryAccess_untilOperatorWarehouseScopeExists() throws Exception {
-        expectForbidden(operator, HttpMethod.GET, "/api/inventory/" + catA.inventoryId(), null);
-        expectForbidden(operator, HttpMethod.POST, "/api/inventory/" + catA.inventoryId() + "/stock",
-                body("quantity", 1));
-        expectForbidden(operator, HttpMethod.PUT, "/api/inventory/" + catA.inventoryId() + "/quantity",
-                body("quantity", 1));
+    void operator_managesInventoryOfAnyWarehouse_accordingToTheResponsibilityMatrix() throws Exception {
+        send(HttpMethod.GET, "/api/inventory/" + catA.inventoryId(), operator, null, 200);
+        send(HttpMethod.POST, "/api/inventory/" + catA.inventoryId() + "/stock", operator, body("quantity", 1), 200);
+        send(HttpMethod.PUT, "/api/inventory/" + catA.inventoryId() + "/quantity", operator, body("quantity", 5), 200);
         // reserve/release tampoco están disponibles ni siquiera para ADMIN
         expectForbidden(admin, HttpMethod.POST, "/api/inventory/" + catA.inventoryId() + "/reserve",
                 body("quantity", 1));
@@ -398,7 +402,9 @@ class AuthorizationIntegrationTest extends RestTestSupport {
 
     @Test
     void otherRoles_keepTheFullOrderContract() throws Exception {
-        for (String token : List.of(buyerA.token(), admin, operator, supervisor)) {
+        // El operador solo ve los pedidos que le asignaron (ver LogisticsIntegrationTest): sin asignación, 403.
+        expectForbidden(operator, HttpMethod.GET, "/api/orders/" + orderAB, null);
+        for (String token : List.of(buyerA.token(), admin, supervisor)) {
             String full = send(HttpMethod.GET, "/api/orders/" + orderAB, token, null, 200);
             assertThat((int) JsonPath.read(full, "$.items.length()")).isEqualTo(2);
             assertThat(((Number) JsonPath.read(full, "$.total.amount")).doubleValue()).isEqualTo(450.00);

@@ -81,7 +81,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         final Optional<User> active;
         try {
-            active = findActiveUser(authHeader.substring(7));
+            active = findActiveUser(authHeader.substring(7), request);
         } catch (InfrastructureUnavailableException ex) {
             log.error("No se pudo verificar al usuario del token: infraestructura no disponible ({})",
                     DatabaseUnavailability.causeChain(ex.getCause()));
@@ -102,26 +102,36 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    /** Usuario ACTIVE dueño del token, o vacío si no se puede confirmar. */
-    private Optional<User> findActiveUser(String jwt) {
+    /**
+     * Usuario ACTIVE dueño del token, o vacío si no se puede confirmar. Cada rechazo deja una línea con el motivo (sin el
+     * token ni datos del usuario salvo su id) para poder distinguir un token inválido de un usuario inactivo o de una huella
+     * de contraseña distinta cuando un cliente recibe 401.
+     */
+    private Optional<User> findActiveUser(String jwt, HttpServletRequest request) {
         try {
             if (!jwtService.isValid(jwt)) {
-                return Optional.empty();
+                return rejected("TOKEN_INVALIDO", null, request);
             }
             UserRepositoryPort repository = users.getIfAvailable();
             if (repository == null) {
-                return Optional.empty();
+                return rejected("REPOSITORIO_DE_USUARIOS_NO_DISPONIBLE", null, request);
             }
             Optional<UserId> userId = jwtService.getUserId(jwt);
             if (userId.isEmpty()) {
-                return Optional.empty();
+                return rejected("TOKEN_SIN_USUARIO", null, request);
             }
-            Optional<User> active = repository.findById(userId.get())
-                    .filter(user -> user.getStatus() == UserStatus.ACTIVE);
-            if (active.isPresent() && !matchesCurrentCredential(jwt, userId.get())) {
-                return Optional.empty();
+            Optional<User> found = repository.findById(userId.get());
+            if (found.isEmpty()) {
+                return rejected("USUARIO_NO_ENCONTRADO", userId.get(), request);
             }
-            return active;
+            if (found.get().getStatus() != UserStatus.ACTIVE) {
+                return rejected("USUARIO_NO_ACTIVO(" + found.get().getStatus() + ")", userId.get(), request);
+            }
+            Optional<String> mismatch = credentialMismatch(jwt, userId.get());
+            if (mismatch.isPresent()) {
+                return rejected("CREDENCIAL_NO_COINCIDE(" + mismatch.get() + ")", userId.get(), request);
+            }
+            return found;
         } catch (Exception ex) {
             if (isInfrastructureFailure(ex)) {
                 throw new InfrastructureUnavailableException(ex);
@@ -138,19 +148,29 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
      * el comportamiento anterior; si el almacén de credenciales no está disponible se falla cerrado. La comparación es de
      * tiempo constante.
      */
-    private boolean matchesCurrentCredential(String jwt, UserId userId) {
+    private Optional<String> credentialMismatch(String jwt, UserId userId) {
         CredentialStorePort store = credentials.getIfAvailable();
         if (store == null) {
-            return false;
+            return Optional.of("ALMACEN_NO_DISPONIBLE");
         }
         Optional<String> hash = store.findByUserId(userId);
         if (hash.isEmpty()) {
-            return true;
+            return Optional.empty();
         }
         Optional<String> claim = jwtService.getCredentialVersion(jwt);
-        return claim.isPresent() && MessageDigest.isEqual(
+        if (claim.isEmpty()) {
+            return Optional.of("TOKEN_SIN_HUELLA");
+        }
+        boolean same = MessageDigest.isEqual(
                 claim.get().getBytes(StandardCharsets.UTF_8),
                 jwtService.credentialVersion(hash.get()).getBytes(StandardCharsets.UTF_8));
+        return same ? Optional.empty() : Optional.of("HUELLA_DISTINTA");
+    }
+
+    private Optional<User> rejected(String reason, UserId userId, HttpServletRequest request) {
+        log.warn("[AUTH] Token rechazado (se responderá 401): motivo={} usuario={} {} {}", reason,
+                userId == null ? "-" : userId.value(), request.getMethod(), request.getRequestURI());
+        return Optional.empty();
     }
 
     /**

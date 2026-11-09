@@ -1,5 +1,8 @@
 package nexus.market.adapters.in.rest.controllers;
 
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import nexus.market.application.AccessPolicy;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
@@ -22,6 +25,7 @@ import nexus.market.domain.valueobjects.OrderId;
  * Controlador REST de facturación: emisión, anulación y consulta (por factura
  * o por pedido).
  */
+@Tag(name = "Facturas", description = "Facturas de los pedidos pagados.")
 @RestController
 @RequestMapping("/api")
 @Profile("jpa")
@@ -35,6 +39,8 @@ public class InvoiceController {
         this.policy = policy;
     }
 
+    @Operation(summary = "Emitir la factura de un pedido", description = "Solo ADMIN. Normalmente la factura se emite sola al pagar.")
+    @ApiResponse(responseCode = "201", description = "Factura emitida.")
     @PostMapping("/orders/{orderId}/invoice")
     public ResponseEntity<InvoiceResponse> generate(@PathVariable String orderId) {
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -42,6 +48,7 @@ public class InvoiceController {
     }
 
     /** Facturas del comprador autenticado, paginadas (más recientes primero). Total en X-Total-Count. */
+    @Operation(summary = "Listar las facturas del comprador", description = "Solo COMPRADOR dueño. Paginado: page y size (máximo 100); el total va en la cabecera X-Total-Count.")
     @GetMapping("/buyers/{buyerId}/invoices")
     public ResponseEntity<java.util.List<InvoiceResponse>> listByBuyer(
             @PathVariable String buyerId,
@@ -57,6 +64,7 @@ public class InvoiceController {
                         .map(RestMappers::invoice).toList());
     }
 
+    @Operation(summary = "Consultar la factura de un pedido", description = "COMPRADOR dueño, ADMIN y SUPERVISOR.")
     @GetMapping("/orders/{orderId}/invoice")
     public ResponseEntity<InvoiceResponse> findByOrderId(@PathVariable String orderId) {
         policy.requireOrderInvoiceReadable(orderId);
@@ -64,6 +72,7 @@ public class InvoiceController {
                 .orElseThrow(() -> new BusinessException("INVOICE_NOT_FOUND", "Factura inexistente."))));
     }
 
+    @Operation(summary = "Consultar una factura", description = "COMPRADOR dueño, ADMIN y SUPERVISOR.")
     @GetMapping("/invoices/{invoiceId}")
     public ResponseEntity<InvoiceResponse> findById(@PathVariable String invoiceId) {
         policy.requireInvoiceReadable(invoiceId);
@@ -71,6 +80,7 @@ public class InvoiceController {
                 RestMappers.invoice(invoiceUseCases.findById(InvoiceId.of(invoiceId))));
     }
 
+    @Operation(summary = "Anular una factura", description = "Solo ADMIN.")
     @PostMapping("/invoices/{invoiceId}/cancel")
     public ResponseEntity<MessageResponse> cancel(@PathVariable String invoiceId) {
         invoiceUseCases.cancelInvoice(InvoiceId.of(invoiceId));

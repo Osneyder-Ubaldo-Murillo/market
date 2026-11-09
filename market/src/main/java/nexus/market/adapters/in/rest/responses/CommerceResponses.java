@@ -4,6 +4,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+
 /**
  * DTOs de respuesta del flujo de compra: carrito, pedidos, pagos, facturas,
  * envíos, devoluciones y reembolsos.
@@ -16,19 +20,33 @@ public final class CommerceResponses {
     /** Ítem de carrito o de pedido con sus montos. */
     public record ItemResponse(String productId, String productName, int quantity,
                                UserResponses.MoneyResponse unitPrice,
-                               UserResponses.MoneyResponse total, String type) {
+                               UserResponses.MoneyResponse total, String type,
+                               @JsonInclude(JsonInclude.Include.NON_NULL) @Schema(description = "Código comercial del producto", example = "TEC-001") String sellerSku,
+                               @JsonInclude(JsonInclude.Include.NON_NULL) @Schema(description = "Nombre comercial del vendedor", example = "Tecnología Pérez") String sellerName,
+                               @JsonInclude(JsonInclude.Include.NON_NULL) @Schema(description = "Identificador del vendedor") String sellerId) {
+
+        /** Sin datos descriptivos (devoluciones y facturas). */
+        public ItemResponse(String productId, String productName, int quantity, UserResponses.MoneyResponse unitPrice,
+                            UserResponses.MoneyResponse total, String type) {
+            this(productId, productName, quantity, unitPrice, total, type, null, null, null);
+        }
     }
 
     /** Carrito con moneda y total. */
     public record CartResponse(String cartId, String buyerId, String currency,
-                               List<ItemResponse> items, UserResponses.MoneyResponse total) {
+                               List<ItemResponse> items, UserResponses.MoneyResponse total,
+                               @JsonInclude(JsonInclude.Include.NON_NULL) @Schema(description = "Nombre completo del comprador") String buyerName,
+                               @JsonInclude(JsonInclude.Include.NON_NULL) @Schema(description = "Correo del comprador") String buyerEmail) {
     }
 
     /** Pedido completo con ciclo de vida. */
     public record OrderResponse(String orderId, String buyerId, List<ItemResponse> items, String status,
                                 UserResponses.MoneyResponse total,
                                 UserResponses.AddressResponse shippingAddress,
-                                String invoiceId, LocalDateTime deliveredAt, LocalDateTime createdAt) {
+                                String invoiceId, LocalDateTime deliveredAt, LocalDateTime createdAt,
+                                @JsonInclude(JsonInclude.Include.NON_NULL) @Schema(description = "Nombre completo del comprador") String buyerName,
+                                @JsonInclude(JsonInclude.Include.NON_NULL) @Schema(description = "Correo del comprador (solo lo ven el propio comprador, ADMIN y SUPERVISOR)") String buyerEmail,
+                                @JsonInclude(JsonInclude.Include.NON_NULL) @Schema(description = "Código legible del pedido", example = "NM-PED-2026-7K3F9Q") String orderCode) {
     }
 
     /**
@@ -37,7 +55,8 @@ public final class CommerceResponses {
      */
     public record SellerOrderResponse(String orderId, List<ItemResponse> items, String status,
                                       UserResponses.MoneyResponse total,
-                                      LocalDateTime deliveredAt, LocalDateTime createdAt) {
+                                      LocalDateTime deliveredAt, LocalDateTime createdAt,
+                                      @JsonInclude(JsonInclude.Include.NON_NULL) @Schema(description = "Código legible del pedido", example = "NM-PED-2026-7K3F9Q") String orderCode) {
     }
 
     /** Confirmación de cobro devuelta por la pasarela. */
@@ -65,5 +84,17 @@ public final class CommerceResponses {
     public record RefundResponse(String refundId, String returnId, String orderId,
                                  UserResponses.MoneyResponse amount, String status,
                                  LocalDateTime requestDate, LocalDateTime processedDate) {
+    }
+
+    /** Reporte: pedidos por estado del ciclo (todos los estados, con 0 si no tienen pedidos) y su total. */
+    public record OrdersByStatusResponse(java.util.Map<String, Long> byStatus, long total) {
+    }
+
+    /** Ventas de una moneda: pedidos con venta efectiva (PAID, DISPATCHED, DELIVERED) y su suma. */
+    public record SalesLineResponse(String currency, long orders, java.math.BigDecimal total) {
+    }
+
+    /** Reporte de ventas, una línea por moneda. */
+    public record SalesReportResponse(List<SalesLineResponse> byCurrency, long orders) {
     }
 }

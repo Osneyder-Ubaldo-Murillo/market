@@ -51,7 +51,9 @@ class HttpErrorFormatTest extends RestTestSupport {
     void beanValidationAndValueObjects_are400() throws Exception {
         assertApiError(send(HttpMethod.POST, "/api/auth/login", null, "{}", 400), "VALIDATION_ERROR");
         String admin = staffToken(SystemRole.ADMIN);
-        assertApiError(send(HttpMethod.GET, "/api/users/no-es-uuid", admin, null, 400), "VALIDATION_ERROR");
+        // {userId} acepta UUID, correo o documento: un correo mal formado es 400; una referencia bien formada que no existe, 404.
+        assertApiError(send(HttpMethod.GET, "/api/users/a@b", admin, null, 400), "VALIDATION_ERROR");
+        assertApiError(send(HttpMethod.GET, "/api/users/no-es-uuid", admin, null, 404), "USER_NOT_FOUND");
     }
 
     @Test

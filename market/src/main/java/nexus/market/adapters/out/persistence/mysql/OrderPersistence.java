@@ -72,6 +72,15 @@ class OrderEntity {
     @Column(name = "payment_transaction_id", length = 64)
     String paymentTransactionId;
 
+    @Column(name = "order_code", length = 24, unique = true)
+    String orderCode;
+
+    @Column(name = "assigned_operator_id", length = 36)
+    String assignedOperatorId;
+
+    @Column(name = "assigned_at")
+    LocalDateTime assignedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     LocalDateTime createdAt;
 
@@ -95,6 +104,9 @@ class OrderEntity {
         entity.invoiceId = order.getInvoiceId() == null ? null : order.getInvoiceId().value();
         entity.deliveredAt = order.getDeliveredAt();
         entity.paymentTransactionId = order.getPaymentTransactionId();
+        entity.orderCode = order.getOrderCode() == null ? null : order.getOrderCode().value();
+        entity.assignedOperatorId = order.getAssignedOperatorId() == null ? null : order.getAssignedOperatorId().value();
+        entity.assignedAt = order.getAssignedAt();
         entity.createdAt = order.getCreatedAt();
         entity.updatedAt = order.getUpdatedAt();
         return entity;
@@ -108,7 +120,10 @@ class OrderEntity {
         InvoiceId invoice = invoiceId == null ? null : InvoiceId.of(invoiceId);
         return new Order(OrderId.of(orderId), BuyerId.of(buyerId), domainItems,
                 JpaCatalogCodecs.INSTANCE.orderStatus(status), address, invoice,
-                deliveredAt, createdAt, updatedAt, paymentTransactionId);
+                deliveredAt, createdAt, updatedAt, paymentTransactionId,
+                orderCode == null ? null : nexus.market.domain.valueobjects.OrderCode.of(orderCode),
+                assignedOperatorId == null ? null : nexus.market.domain.valueobjects.UserId.of(assignedOperatorId),
+                assignedAt);
     }
 }
 
@@ -147,6 +162,17 @@ class JpaOrderRepositoryPort extends JpaRepositorySupport implements OrderReposi
     public long countByBuyerId(BuyerId buyerId) {
         return count("select count(o) from OrderEntity o where o.buyerId = :buyerId",
                 Map.of("buyerId", buyerId.value()));
+    }
+
+    @Override
+    public Optional<Order> findByCode(nexus.market.domain.valueobjects.OrderCode code) {
+        return querySingle(String.class, "select o.orderId from OrderEntity o where o.orderCode = :code",
+                Map.of("code", code.value())).flatMap(id -> findById(OrderId.of(id)));
+    }
+
+    @Override
+    public boolean existsByCode(nexus.market.domain.valueobjects.OrderCode code) {
+        return count("select count(o) from OrderEntity o where o.orderCode = :code", Map.of("code", code.value())) > 0;
     }
 
     @Override

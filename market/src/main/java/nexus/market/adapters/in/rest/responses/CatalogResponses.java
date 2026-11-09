@@ -4,6 +4,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 /**
  * DTOs de respuesta del catálogo, inventario y bodegas.
  */
@@ -15,7 +17,9 @@ public final class CatalogResponses {
     /** Producto publicado o no (estado {@code ACTIVE}/{@code INACTIVE}). */
     public record ProductResponse(String productId, String sellerId, String name, String description,
                                   String type, UserResponses.MoneyResponse price, String status,
-                                  Map<String, Object> specifications, LocalDateTime createdAt) {
+                                  Map<String, Object> specifications, LocalDateTime createdAt,
+                                  @Schema(description = "Código comercial que define el vendedor (único en su catálogo). Nulo en productos anteriores a su asignación.", example = "TEC-001") String sellerSku,
+                                  @Schema(description = "Nombre comercial del vendedor", example = "Tecnología Pérez") String sellerName) {
     }
 
     /** Existencias de un producto en una bodega. */

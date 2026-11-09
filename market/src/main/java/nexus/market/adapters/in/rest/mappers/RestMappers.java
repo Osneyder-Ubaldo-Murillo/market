@@ -5,6 +5,7 @@ import java.util.List;
 import nexus.market.adapters.in.rest.responses.CatalogResponses;
 import nexus.market.adapters.in.rest.responses.CommerceResponses;
 import nexus.market.adapters.in.rest.responses.UserResponses;
+import nexus.market.application.IdentityDirectory;
 
 /**
  * Mapeador estático dominio → DTO de respuesta. Toda conversión hacia/desde
@@ -28,6 +29,11 @@ public final class RestMappers {
     }
 
     public static UserResponses.UserResponse user(nexus.market.domain.models.User user) {
+        return user(user, IdentityDirectory.ProfileRefs.NONE);
+    }
+
+    /** Cuenta con los identificadores de su perfil (buyerId o sellerId y nombre comercial). */
+    public static UserResponses.UserResponse user(nexus.market.domain.models.User user, IdentityDirectory.ProfileRefs profile) {
         return new UserResponses.UserResponse(
                 user.getUserId().value(),
                 user.getFullName().getValue(),
@@ -36,7 +42,10 @@ public final class RestMappers {
                 user.getRole().getCode(),
                 user.getStatus().getCode(),
                 user.getCreatedAt(),
-                user.getUpdatedAt());
+                user.getUpdatedAt(),
+                profile.buyerId(),
+                profile.sellerId(),
+                profile.businessName());
     }
 
     public static UserResponses.BuyerResponse buyer(nexus.market.domain.models.Buyer buyer) {
@@ -65,6 +74,10 @@ public final class RestMappers {
     // ------------------------------------------------------------------
 
     public static CatalogResponses.ProductResponse product(nexus.market.domain.models.Product product) {
+        return product(product, null);
+    }
+
+    public static CatalogResponses.ProductResponse product(nexus.market.domain.models.Product product, String sellerName) {
         return new CatalogResponses.ProductResponse(
                 product.getProductId().value(),
                 product.getSellerId().value(),
@@ -74,7 +87,9 @@ public final class RestMappers {
                 money(product.getPrice()),
                 product.getStatus().getCode(),
                 product.getSpecifications(),
-                product.getCreatedAt());
+                product.getCreatedAt(),
+                product.getSellerSku() == null ? null : product.getSellerSku().getValue(),
+                sellerName);
     }
 
     public static CatalogResponses.InventoryResponse inventory(nexus.market.domain.models.Inventory inventory) {
@@ -104,62 +119,105 @@ public final class RestMappers {
     // ------------------------------------------------------------------
 
     public static CommerceResponses.CartResponse cart(nexus.market.domain.models.Cart cart) {
+        return cart(cart, java.util.Map.of(), null);
+    }
+
+    /** Carrito con el vendedor y el código de cada producto y el nombre y correo del comprador (dueño del carrito). */
+    public static CommerceResponses.CartResponse cart(nexus.market.domain.models.Cart cart,
+                                                      java.util.Map<String, IdentityDirectory.ProductLabel> labels,
+                                                      IdentityDirectory.PersonLabel buyer) {
         return new CommerceResponses.CartResponse(
                 cart.getCartId().value(),
                 cart.getBuyerId().value(),
                 cart.getCurrency().getCurrencyCode(),
-                cart.getItems().stream().map(RestMappers::cartItem).toList(),
-                money(cart.getTotal()));
+                cart.getItems().stream().map(item -> cartItem(item, labels.get(item.getProductId().value()))).toList(),
+                money(cart.getTotal()),
+                buyer == null ? null : buyer.fullName(),
+                buyer == null ? null : buyer.email());
     }
 
     public static CommerceResponses.ItemResponse cartItem(nexus.market.domain.valueobjects.CartItem item) {
+        return cartItem(item, null);
+    }
+
+    public static CommerceResponses.ItemResponse cartItem(nexus.market.domain.valueobjects.CartItem item,
+                                                          IdentityDirectory.ProductLabel label) {
         return new CommerceResponses.ItemResponse(
                 item.getProductId().value(),
                 item.getProductName().getValue(),
                 item.getQuantity().getValue(),
                 money(item.getUnitPrice()),
                 money(item.getTotal()),
-                item.getProductType().getCode());
+                item.getProductType().getCode(),
+                label == null ? null : label.sellerSku(),
+                label == null ? null : label.sellerName(),
+                label == null ? null : label.sellerId());
     }
 
     public static CommerceResponses.ItemResponse orderItem(nexus.market.domain.valueobjects.OrderItem item) {
+        return orderItem(item, null);
+    }
+
+    public static CommerceResponses.ItemResponse orderItem(nexus.market.domain.valueobjects.OrderItem item,
+                                                           IdentityDirectory.ProductLabel label) {
         return new CommerceResponses.ItemResponse(
                 item.getProductId().value(),
                 item.getProductName().getValue(),
                 item.getQuantity().getValue(),
                 money(item.getUnitPrice()),
                 money(item.getTotal()),
-                item.getProductType().getCode());
+                item.getProductType().getCode(),
+                label == null ? null : label.sellerSku(),
+                label == null ? null : label.sellerName(),
+                label == null ? null : label.sellerId());
     }
 
     public static CommerceResponses.OrderResponse order(nexus.market.domain.models.Order order) {
+        return order(order, java.util.Map.of(), null, false);
+    }
+
+    /** Pedido con vendedor y código de cada línea y el nombre del comprador; el correo solo si {@code showBuyerEmail}. */
+    public static CommerceResponses.OrderResponse order(nexus.market.domain.models.Order order,
+                                                        java.util.Map<String, IdentityDirectory.ProductLabel> labels,
+                                                        IdentityDirectory.PersonLabel buyer, boolean showBuyerEmail) {
         return new CommerceResponses.OrderResponse(
                 order.getOrderId().value(),
                 order.getBuyerId().value(),
-                order.getItems().stream().map(RestMappers::orderItem).toList(),
+                order.getItems().stream().map(item -> orderItem(item, labels.get(item.getProductId().value()))).toList(),
                 order.getStatus().getCode(),
                 money(order.getTotal()),
                 UserResponses.AddressResponse.of(order.getShippingAddress()),
                 order.getInvoiceId() == null ? null : order.getInvoiceId().value(),
                 order.getDeliveredAt(),
-                order.getCreatedAt());
+                order.getCreatedAt(),
+                buyer == null ? null : buyer.fullName(),
+                buyer == null || !showBuyerEmail ? null : buyer.email(),
+                order.getOrderCode() == null ? null : order.getOrderCode().value());
     }
 
     /** Vista restringida del pedido: solo los ítems del vendedor y su subtotal. */
     public static CommerceResponses.SellerOrderResponse orderForSeller(
             nexus.market.domain.models.Order order,
             List<nexus.market.domain.valueobjects.OrderItem> sellerItems) {
+        return orderForSeller(order, sellerItems, java.util.Map.of());
+    }
+
+    public static CommerceResponses.SellerOrderResponse orderForSeller(
+            nexus.market.domain.models.Order order,
+            List<nexus.market.domain.valueobjects.OrderItem> sellerItems,
+            java.util.Map<String, IdentityDirectory.ProductLabel> labels) {
         nexus.market.domain.valueobjects.Money subtotal = sellerItems.stream()
                 .map(nexus.market.domain.valueobjects.OrderItem::getTotal)
                 .reduce(nexus.market.domain.valueobjects.Money::add)
                 .orElse(null);
         return new CommerceResponses.SellerOrderResponse(
                 order.getOrderId().value(),
-                sellerItems.stream().map(RestMappers::orderItem).toList(),
+                sellerItems.stream().map(item -> orderItem(item, labels.get(item.getProductId().value()))).toList(),
                 order.getStatus().getCode(),
                 money(subtotal),
                 order.getDeliveredAt(),
-                order.getCreatedAt());
+                order.getCreatedAt(),
+                order.getOrderCode() == null ? null : order.getOrderCode().value());
     }
 
     public static CommerceResponses.PaymentResponse payment(

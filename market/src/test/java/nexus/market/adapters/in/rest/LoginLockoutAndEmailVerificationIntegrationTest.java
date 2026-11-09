@@ -230,7 +230,6 @@ class LoginLockoutAndEmailVerificationIntegrationTest extends RestTestSupport {
                         "password", PASSWORD, "businessName", "Comercial " + suffix,
                         "taxId", String.valueOf(java.util.concurrent.ThreadLocalRandom.current()
                                 .nextInt(10_000_000, 99_999_999))), 201);
-        send(HttpMethod.POST, "/api/sellers/" + JsonPath.read(registered, "$.sellerId") + "/approve", admin, "{}", 200);
         assertThat(login(email, PASSWORD).code()).isEqualTo("EMAIL_NOT_VERIFIED");
         verifyEmail(JsonPath.read(registered, "$.userId"));
         assertThat(login(email, PASSWORD).status()).isEqualTo(200);

@@ -54,6 +54,7 @@ class RestApiIntegrationTest extends RestTestSupport {
         // 6) Solo el operador logístico despacha y actualiza los estados logísticos.
         send(HttpMethod.POST, "/api/orders/" + orderId + "/dispatch", seller,
                 body("warehouseId", catalog.warehouseId()), 403);
+        assignAndPick(admin, operator, orderId);
         send(HttpMethod.POST, "/api/orders/" + orderId + "/dispatch", operator,
                 body("warehouseId", catalog.warehouseId()), 200);
         String shippingId = read(send(HttpMethod.GET, "/api/orders/" + orderId + "/shipping", operator, null, 200),

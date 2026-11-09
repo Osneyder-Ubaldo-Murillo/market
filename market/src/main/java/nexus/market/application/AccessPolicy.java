@@ -148,6 +148,20 @@ public class AccessPolicy {
         }
     }
 
+    /**
+     * Quien no es ADMIN ni SUPERVISOR solo puede referirse a su propia cuenta (por UUID, correo o documento). Cualquier otra
+     * referencia, exista o no, recibe la misma negativa: no sirve para averiguar qué correos o documentos están registrados.
+     */
+    public void requireOwnAccountReference(String reference, nexus.market.domain.models.User own) {
+        String ref = reference == null ? "" : reference.trim();
+        boolean matches = ref.equals(own.getUserId().value())
+                || ref.equalsIgnoreCase(own.getEmail().getValue())
+                || ref.equalsIgnoreCase(own.getDocumentId().getValue());
+        if (!matches) {
+            throw denied();
+        }
+    }
+
     /** El path {@code buyerId} debe ser el comprador del usuario autenticado (rol BUYER). */
     public void requireOwnBuyer(String buyerId) {
         boolean own = currentBuyer()
@@ -208,8 +222,24 @@ public class AccessPolicy {
         requireOwnSeller(sellerId);
     }
 
+    /** El correo del comprador lo ven el propio comprador, ADMIN y SUPERVISOR (vendedores y operadores solo ven el nombre). */
+    public boolean mayReadBuyerEmail() {
+        return hasRole(SystemRole.BUYER, SystemRole.ADMIN, SystemRole.SUPERVISOR);
+    }
+
+    /** Lectura de los productos de un vendedor (en cualquier estado): ADMIN/SUPERVISOR cualquiera; SELLER solo los suyos. */
+    public void requireSellerProductsReadable(String sellerId) {
+        if (hasRole(SystemRole.ADMIN, SystemRole.SUPERVISOR)) {
+            return;
+        }
+        requireOwnSeller(sellerId);
+    }
+
     /** Crear inventario: producto y bodega deben ser del vendedor autenticado. */
     public void requireOwnProductAndWarehouse(String productId, String warehouseId) {
+        if (hasRole(SystemRole.LOGISTICS_OPERATOR)) {
+            return; // el operador registra inventario en cualquier bodega (matriz de responsabilidades del PDF)
+        }
         boolean ok = products.findById(ProductId.of(productId)).filter(this::sellerOwnsProduct).isPresent()
                 && warehouses.findById(WarehouseId.of(warehouseId)).filter(this::sellerOwnsWarehouse).isPresent();
         if (!ok) {
@@ -219,6 +249,9 @@ public class AccessPolicy {
 
     /** Operar sobre un inventario existente: su producto y su bodega deben ser propios. */
     public void requireOwnInventory(String inventoryId) {
+        if (hasRole(SystemRole.LOGISTICS_OPERATOR)) {
+            return; // el operador administra el inventario de las bodegas (matriz de responsabilidades del PDF)
+        }
         Optional<Inventory> inventory = inventories.findById(InventoryId.of(inventoryId));
         boolean ok = inventory.isPresent()
                 && products.findById(inventory.get().getProductId()).filter(this::sellerOwnsProduct).isPresent()
@@ -230,7 +263,7 @@ public class AccessPolicy {
 
     /** Consulta de inventario: ADMIN/SUPERVISOR cualquiera; SELLER solo el propio. */
     public void requireInventoryReadable(String inventoryId) {
-        if (hasRole(SystemRole.ADMIN, SystemRole.SUPERVISOR)) {
+        if (hasRole(SystemRole.ADMIN, SystemRole.SUPERVISOR, SystemRole.LOGISTICS_OPERATOR)) {
             return;
         }
         requireOwnInventory(inventoryId);
@@ -262,9 +295,13 @@ public class AccessPolicy {
      */
     public Order readableOrder(String orderId) {
         Optional<Order> found = orders.findById(OrderId.of(orderId));
-        if (hasRole(SystemRole.ADMIN, SystemRole.SUPERVISOR, SystemRole.LOGISTICS_OPERATOR)) {
+        if (hasRole(SystemRole.ADMIN, SystemRole.SUPERVISOR)) {
             return found.orElseThrow(
                     () -> new BusinessException("ORDER_NOT_FOUND", "Pedido inexistente."));
+        }
+        if (hasRole(SystemRole.LOGISTICS_OPERATOR)) {
+            // El operador solo ve los pedidos que le asignaron; no se distingue "ajeno" de "inexistente".
+            return found.filter(this::assignedToMe).orElseThrow(AccessPolicy::denied);
         }
         Order order = found.orElseThrow(AccessPolicy::denied);
         boolean ok = (hasRole(SystemRole.BUYER) && buyerOwnsOrder(order))
@@ -282,9 +319,54 @@ public class AccessPolicy {
         }
     }
 
+    /** Pedido por UUID o por código legible ({@code NM-PED-...}). */
+    private Optional<Order> findOrderByReference(String reference) {
+        return nexus.market.domain.valueobjects.OrderCode.looksLikeCode(reference)
+                ? orders.findByCode(nexus.market.domain.valueobjects.OrderCode.of(reference))
+                : orders.findById(OrderId.of(reference));
+    }
+
+    private boolean assignedToMe(Order order) {
+        return currentUserId().map(id -> order.isAssignedTo(UserId.of(id))).orElse(false);
+    }
+
+    /**
+     * Pedido para la gestión logística, por UUID o código. El operador solo accede a los que tiene asignados (si es ajeno o
+     * no existe responde igual: 403); ADMIN y SUPERVISOR acceden a cualquiera (404 si no existe).
+     */
+    public Order logisticsOrder(String reference) {
+        Optional<Order> found = findOrderByReference(reference);
+        if (hasRole(SystemRole.LOGISTICS_OPERATOR)) {
+            return found.filter(this::assignedToMe).orElseThrow(AccessPolicy::denied);
+        }
+        return found.orElseThrow(() -> new BusinessException("ORDER_NOT_FOUND", "Pedido inexistente."));
+    }
+
+    /** Operaciones logísticas sobre un pedido (despachar, entregar...): solo el operador al que está asignado. */
+    public void requireAssignedOperatorOfOrder(String orderId) {
+        if (orders.findById(OrderId.of(orderId)).filter(this::assignedToMe).isEmpty()) {
+            throw denied();
+        }
+    }
+
+    public void requireAssignedOperatorOfShipping(String shippingId) {
+        Shipping shipping = shippings.findById(ShippingId.of(shippingId)).orElseThrow(AccessPolicy::denied);
+        requireAssignedOperatorOfOrder(shipping.getOrderId().value());
+    }
+
+    /** Código del rol del usuario autenticado (para el historial), o vacío si es anónimo. */
+    public String currentRoleCode() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) {
+            return null;
+        }
+        return auth.getAuthorities().stream().map(GrantedAuthority::getAuthority)
+                .filter(a -> a.startsWith("ROLE_")).map(a -> a.substring(5)).findFirst().orElse(null);
+    }
+
     public void requireShippingReadable(String shippingId) {
         Optional<Shipping> shipping = shippings.findById(ShippingId.of(shippingId));
-        if (hasRole(SystemRole.ADMIN, SystemRole.SUPERVISOR, SystemRole.LOGISTICS_OPERATOR)) {
+        if (hasRole(SystemRole.ADMIN, SystemRole.SUPERVISOR)) {
             return;
         }
         readableOrder(shipping.orElseThrow(AccessPolicy::denied).getOrderId().value());

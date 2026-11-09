@@ -2,11 +2,13 @@ package nexus.market.domain.ports.in;
 
 import nexus.market.domain.models.Buyer;
 import nexus.market.domain.models.Seller;
+import nexus.market.domain.models.User;
 import nexus.market.domain.valueobjects.Address;
 import nexus.market.domain.valueobjects.BusinessName;
 import nexus.market.domain.valueobjects.DocumentId;
 import nexus.market.domain.valueobjects.Email;
 import nexus.market.domain.valueobjects.FullName;
+import nexus.market.domain.valueobjects.SystemRole;
 import nexus.market.domain.valueobjects.TaxId;
 
 /**
@@ -23,6 +25,12 @@ public interface AuthUseCases {
 
     Seller registerSeller(FullName fullName, Email email, DocumentId documentId,
                           BusinessName businessName, TaxId taxId, String rawPassword);
+
+    /**
+     * Da de alta personal interno (operador logístico o supervisor) con contraseña. Lo invoca solo un ADMIN. La cuenta
+     * queda con el correo sin verificar y recibe su código como cualquier alta.
+     */
+    User registerStaff(FullName fullName, Email email, DocumentId documentId, SystemRole role, String rawPassword);
 
     /**
      * Autentica al usuario: verifica la contraseña, exige estado

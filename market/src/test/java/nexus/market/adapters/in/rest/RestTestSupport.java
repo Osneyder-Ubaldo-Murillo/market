@@ -87,6 +87,25 @@ public abstract class RestTestSupport {
         return jwt.issue(user.getUserId(), role);
     }
 
+    /**
+     * Deja un pedido PAID listo para despachar: un administrador asigna el operador y el operador registra como recogido todo lo
+     * que falta por recoger (los endpoints logísticos exigen operador asignado y recogida completa).
+     */
+    protected void assignAndPick(String adminToken, String operatorToken, String orderId) throws Exception {
+        String operatorId = jwt.getUserId(operatorToken).orElseThrow().value();
+        send(HttpMethod.PUT, "/api/logistics/orders/" + orderId + "/operator", adminToken,
+                body("operator", operatorId), 200);
+        String detail = send(HttpMethod.GET, "/api/logistics/orders/" + orderId, operatorToken, null, 200);
+        int lines = JsonPath.read(detail, "$.lines.length()");
+        for (int i = 0; i < lines; i++) {
+            int pending = JsonPath.read(detail, "$.lines[" + i + "].pending");
+            if (pending > 0) {
+                send(HttpMethod.POST, "/api/logistics/orders/" + orderId + "/pickups", operatorToken,
+                        body("productId", JsonPath.read(detail, "$.lines[" + i + "].productId"), "quantity", pending), 200);
+            }
+        }
+    }
+
     protected Account registerBuyer() throws Exception {
         String suffix = uniq();
         String email = "buyer-" + suffix + "@mail.test";
@@ -114,7 +133,6 @@ public abstract class RestTestSupport {
                         "taxId", String.valueOf(ThreadLocalRandom.current().nextInt(10_000_000, 99_999_999))),
                 201);
         String sellerId = JsonPath.read(registered, "$.sellerId");
-        send(HttpMethod.POST, "/api/sellers/" + sellerId + "/approve", adminToken, "{}", 200);
         verifyEmail(JsonPath.read(registered, "$.userId"));
         return login(sellerId, email);
     }

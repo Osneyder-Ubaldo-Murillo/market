@@ -70,19 +70,44 @@ public class UserManagementService {
 
     /**
      * Registra un vendedor: crea el {@code User} con rol {@code SELLER} y el
-     * perfil {@code Seller} en estado {@code PENDING_VERIFICATION} (solo el
-     * Administrador, validado en la capa de aplicación).
+     * perfil {@code Seller} ya {@code ACTIVE}: lo incorpora el Administrador (validado en la capa de aplicación), que es
+     * quien lo verifica, así que no queda pendiente de una segunda aprobación.
      */
     public Seller registerSeller(FullName fullName, Email email, DocumentId documentId,
                                  BusinessName businessName, TaxId taxId) {
         requireUnique(email, documentId);
 
         User user = users.save(User.createPendingVerification(fullName, email, documentId, SystemRole.SELLER));
-        Seller seller = sellers.save(Seller.create(user.getUserId(), businessName, taxId));
+        Seller created = Seller.create(user.getUserId(), businessName, taxId);
+        created.approve();
+        Seller seller = sellers.save(created);
 
         audit.record(OperationType.SELLER_REGISTRATION, AuditSeverity.INFO,
                 user.getUserId().toString(), "Registro de vendedor");
+        audit.record(OperationType.SELLER_APPROVAL, AuditSeverity.INFO,
+                user.getUserId().toString(), "Vendedor activado al registrarse: " + seller.getSellerId());
         return seller;
+    }
+
+    /**
+     * Da de alta personal interno: operador logístico o supervisor. Sin este camino no existe forma de crear un operador, y
+     * despachar y entregar un pedido exige ese rol, de modo que ningún pedido pagado podría avanzar. Solo admite esos dos
+     * roles: el administrador tiene su propio procedimiento controlado y el comprador y el vendedor se registran con su
+     * perfil. La cuenta queda con el correo sin verificar, como el resto de altas.
+     */
+    public User registerStaff(FullName fullName, Email email, DocumentId documentId, SystemRole role) {
+        Objects.requireNonNull(role, "role es obligatorio");
+        String code = role.getCode();
+        if (!SystemRole.LOGISTICS_OPERATOR.getCode().equals(code) && !SystemRole.SUPERVISOR.getCode().equals(code)) {
+            throw new IllegalArgumentException("El personal interno solo puede ser LOGISTICS_OPERATOR o SUPERVISOR.");
+        }
+        requireUnique(email, documentId);
+
+        User user = users.save(User.createPendingVerification(fullName, email, documentId, role));
+
+        audit.record(OperationType.STAFF_REGISTRATION, AuditSeverity.INFO,
+                user.getUserId().toString(), "Alta de personal interno: " + code);
+        return user;
     }
 
     /** Aprueba la verificación de un vendedor ({@code PENDING_VERIFICATION → ACTIVE}). */
@@ -134,6 +159,27 @@ public class UserManagementService {
     public User findUser(UserId userId) {
         return loadUser(userId);
     }
+
+    private static final java.util.regex.Pattern UUID_PATTERN = java.util.regex.Pattern.compile(
+            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
+
+    /**
+     * Localiza una cuenta por una referencia legible: el UUID, el correo (contiene {@code @}) o el número de documento. No hay
+     * ambigüedad porque los tres formatos son excluyentes y correo y documento son únicos en la plataforma.
+     */
+    public User findUserByReference(String reference) {
+        String ref = reference == null ? "" : reference.trim();
+        java.util.Optional<User> found;
+        if (UUID_PATTERN.matcher(ref).matches()) {
+            found = users.findById(UserId.of(ref));
+        } else if (ref.contains("@")) {
+            found = users.findByEmail(Email.of(ref));
+        } else {
+            found = users.findByDocumentId(DocumentId.of(ref));
+        }
+        return found.orElseThrow(() -> new BusinessException("USER_NOT_FOUND", "Usuario inexistente."));
+    }
+
 
     private void requireUnique(Email email, DocumentId documentId) {
         Objects.requireNonNull(email, "email es obligatorio");

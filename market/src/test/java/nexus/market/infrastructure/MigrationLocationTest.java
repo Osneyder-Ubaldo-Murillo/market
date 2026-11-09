@@ -39,7 +39,7 @@ class MigrationLocationTest {
     void activeLocation_hasNoSeedsOrUsers() throws IOException {
         Resource[] scripts = new PathMatchingResourcePatternResolver().getResources("classpath:db/schema/*.sql");
         assertThat(scripts).extracting(Resource::getFilename).containsExactlyInAnyOrder("V1__initial_schema.sql", "V2__user_email_verification.sql",
-                "V3__order_payment_transaction.sql");
+                "V3__order_payment_transaction.sql", "V4__product_seller_sku.sql", "V5__order_logistics.sql");
         for (Resource script : scripts) {
             String sql = new String(script.getInputStream().readAllBytes(), StandardCharsets.UTF_8).toUpperCase();
             assertThat(sql).doesNotContain("INSERT ").doesNotContain("$2A$").doesNotContain("PASSWORD123");
@@ -53,7 +53,7 @@ class MigrationLocationTest {
     @Test
     void activeMigrations_createNoAdministratorAndNoCredentials() throws IOException {
         Resource[] scripts = new PathMatchingResourcePatternResolver().getResources("classpath:db/schema/*");
-        assertThat(scripts).hasSize(3);
+        assertThat(scripts).hasSize(5);
         for (Resource script : scripts) {
             String sql = new String(script.getInputStream().readAllBytes(), StandardCharsets.UTF_8).toUpperCase();
             // Solo definiciones de tablas/columnas (y el UPDATE de V2 sobre fechas): ni filas, ni el rol ADMIN como dato,

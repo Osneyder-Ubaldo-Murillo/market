@@ -23,4 +23,9 @@ public interface OrderRepositoryPort {
     List<Order> findByBuyerId(BuyerId buyerId, int offset, int limit);
 
     long countByBuyerId(BuyerId buyerId);
+
+    /** Busca por código legible (con el mismo bloqueo que {@link #findById}). */
+    Optional<Order> findByCode(nexus.market.domain.valueobjects.OrderCode code);
+
+    boolean existsByCode(nexus.market.domain.valueobjects.OrderCode code);
 }

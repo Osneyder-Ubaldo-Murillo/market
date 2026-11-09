@@ -27,8 +27,10 @@ public class OrderApplicationService implements OrderUseCases {
 
     private final OrderService delegate;
     private final OrderNotifier notifier;
+    private final OrderTimeline timeline;
 
-    public OrderApplicationService(OrderService delegate, OrderNotifier notifier) {
+    public OrderApplicationService(OrderService delegate, OrderNotifier notifier, OrderTimeline timeline) {
+        this.timeline = Objects.requireNonNull(timeline, "timeline es obligatorio");
         this.delegate = Objects.requireNonNull(delegate, "delegate es obligatorio");
         this.notifier = Objects.requireNonNull(notifier, "notifier es obligatorio");
     }
@@ -54,14 +56,20 @@ public class OrderApplicationService implements OrderUseCases {
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public void dispatch(OrderId orderId, WarehouseId warehouseId) {
         delegate.dispatch(orderId, warehouseId);
+        timeline.record(orderId, nexus.market.domain.enums.OrderEventType.DISPATCHED, "Pedido despachado");
         notifier.notifyOrder(orderId, "Pedido despachado", "Su pedido " + orderId + " fue despachado.");
     }
 
     @Override
     @Transactional(isolation = Isolation.READ_COMMITTED)
-    public void deliver(OrderId orderId) {
+    public void deliver(OrderId orderId, String notes) {
         delegate.deliver(orderId);
+        timeline.record(orderId, nexus.market.domain.enums.OrderEventType.DELIVERED, deliveryDetail(notes));
         notifier.notifyOrder(orderId, "Pedido entregado", "Su pedido " + orderId + " fue entregado.");
+    }
+
+    static String deliveryDetail(String notes) {
+        return notes == null || notes.isBlank() ? "Entrega confirmada" : "Entrega confirmada: " + notes.trim();
     }
 
     @Override

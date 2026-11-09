@@ -15,6 +15,7 @@ import nexus.market.domain.valueobjects.ProductId;
 import nexus.market.domain.valueobjects.ProductName;
 import nexus.market.domain.valueobjects.ProductType;
 import nexus.market.domain.valueobjects.SellerId;
+import nexus.market.domain.valueobjects.SellerSku;
 
 /**
  * Servicio de aplicación del catálogo de productos: delega en
@@ -32,8 +33,13 @@ public class ProductCatalogApplicationService implements ProductCatalogUseCases 
 
     @Override
     public Product createProduct(SellerId sellerId, ProductName name, ProductDescription description,
-                                 ProductType type, Money price) {
-        return delegate.createProduct(sellerId, name, description, type, price);
+                                 ProductType type, Money price, SellerSku sellerSku) {
+        return delegate.createProduct(sellerId, name, description, type, price, sellerSku);
+    }
+
+    @Override
+    public Product findBySellerAndSku(SellerId sellerId, SellerSku sellerSku) {
+        return delegate.findBySellerAndSku(sellerId, sellerSku);
     }
 
     @Override
@@ -42,13 +48,44 @@ public class ProductCatalogApplicationService implements ProductCatalogUseCases 
     }
 
     @Override
+    public List<Product> findBySeller(SellerId sellerId, String statusCode, int offset, int limit) {
+        return delegate.findBySeller(sellerId, statusCode, offset, limit);
+    }
+
+    @Override
+    public long countBySeller(SellerId sellerId, String statusCode) {
+        return delegate.countBySeller(sellerId, statusCode);
+    }
+
+    @Override
+    public void suspendProduct(ProductId productId) {
+        delegate.suspendProduct(productId);
+    }
+
+    @Override
+    public void discontinueProduct(ProductId productId) {
+        delegate.discontinueProduct(productId);
+    }
+
+    @Override
+    public Product addVariant(ProductId productId, String variant) {
+        return delegate.addVariant(productId, variant);
+    }
+
+    @Override
+    public Product removeVariant(ProductId productId, String variant) {
+        return delegate.removeVariant(productId, variant);
+    }
+
+    @Override
     public void unpublishProduct(ProductId productId) {
         delegate.unpublishProduct(productId);
     }
 
     @Override
-    public void updateDetails(ProductId productId, ProductName name, ProductDescription description) {
-        delegate.updateDetails(productId, name, description);
+    public void updateDetails(ProductId productId, ProductName name, ProductDescription description,
+                              SellerSku sellerSku) {
+        delegate.updateDetails(productId, name, description, sellerSku);
     }
 
     @Override

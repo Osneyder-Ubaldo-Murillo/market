@@ -112,6 +112,13 @@ class JpaUserRepositoryPort extends JpaRepositorySupport implements UserReposito
     }
 
     @Override
+    public Optional<User> findByDocumentId(DocumentId documentId) {
+        return querySingle(UserEntity.class,
+                "select u from UserEntity u where u.documentId = :doc", Map.of("doc", documentId.value()))
+                .map(UserEntity::toDomain);
+    }
+
+    @Override
     public boolean existsByEmail(Email email) {
         return findByEmail(email).isPresent();
     }

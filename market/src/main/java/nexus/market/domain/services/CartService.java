@@ -34,10 +34,13 @@ public class CartService {
     private final BusinessConfigurationPort config;
     private final ActiveBuyerSpecification activeBuyer;
     private final AuditService audit;
+    private final nexus.market.domain.ports.out.InventoryRepositoryPort inventories;
 
     public CartService(CartRepositoryPort carts, BuyerRepositoryPort buyers,
                        ProductRepositoryPort products, BusinessConfigurationPort config,
-                       ActiveBuyerSpecification activeBuyer, AuditService audit) {
+                       ActiveBuyerSpecification activeBuyer, AuditService audit,
+                       nexus.market.domain.ports.out.InventoryRepositoryPort inventories) {
+        this.inventories = Objects.requireNonNull(inventories, "inventories es obligatorio");
         this.carts = Objects.requireNonNull(carts, "carts es obligatorio");
         this.buyers = Objects.requireNonNull(buyers, "buyers es obligatorio");
         this.products = Objects.requireNonNull(products, "products es obligatorio");
@@ -79,6 +82,9 @@ public class CartService {
         }
 
         Cart cart = getOrCreateCart(buyerId, item.getUnitPrice().getCurrency());
+        int alreadyInCart = cart.getItems().stream().filter(i -> i.getProductId().equals(item.getProductId()))
+                .mapToInt(i -> i.getQuantity().value()).sum();
+        requireStock(product, alreadyInCart + item.getQuantity().value());
         cart.addItem(item);
         carts.save(cart);
         audit.record(OperationType.CART_ADD_ITEM, AuditSeverity.INFO,
@@ -95,6 +101,9 @@ public class CartService {
             return;
         }
         Cart cart = optional.get();
+        if (!newQuantity.isZero()) {
+            products.findById(productId).ifPresent(product -> requireStock(product, newQuantity.value()));
+        }
         cart.updateQuantity(productId, newQuantity);
         carts.save(cart);
     }
@@ -126,6 +135,25 @@ public class CartService {
         carts.save(cart);
         audit.record(OperationType.CART_CLEAR, AuditSeverity.INFO,
                 buyerId.toString(), "Carrito vaciado");
+    }
+
+    /**
+     * La cantidad total del producto en el carrito no puede superar lo disponible (existencias menos reservas, sumando
+     * todas las bodegas). Es una validación temprana para el comprador: la garantía contra la sobreventa es la reserva con
+     * bloqueo al crear el pedido, que vuelve a comprobar la disponibilidad.
+     */
+    private void requireStock(Product product, int wanted) {
+        if (product.getProductType() != nexus.market.domain.valueobjects.ProductType.PHYSICAL) {
+            return;
+        }
+        int available = inventories.findByProductId(product.getProductId()).stream()
+                .filter(inv -> inv.getStatus() == nexus.market.domain.valueobjects.InventoryStatus.ACTIVE)
+                .mapToInt(inv -> inv.getAvailableQuantity().value()).sum();
+        if (wanted > available) {
+            throw new nexus.market.domain.exceptions.InsufficientInventoryException(
+                    "Solo hay " + available + " unidades disponibles de " + product.getName().getValue()
+                            + " y se solicitan " + wanted + ".");
+        }
     }
 
     private Buyer loadBuyer(BuyerId buyerId) {

@@ -10,6 +10,7 @@ public final class OperationType extends DomainCatalog {
     public static final OperationType USER_REGISTRATION = new OperationType("USER_REGISTRATION", "Registro de Usuario", "Registro de un usuario en la plataforma");
     public static final OperationType SELLER_REGISTRATION = new OperationType("SELLER_REGISTRATION", "Registro de Vendedor", "Registro de un vendedor");
     public static final OperationType BUYER_REGISTRATION = new OperationType("BUYER_REGISTRATION", "Registro de Comprador", "Registro de un comprador");
+    public static final OperationType STAFF_REGISTRATION = new OperationType("STAFF_REGISTRATION", "Alta de Personal Interno", "Un administrador da de alta un operador logístico o un supervisor");
 
     // Códigos agregados en la corrección: la SDD (Domain Services.md) los marca
     // como pendientes para la administración de usuarios y aprobación de vendedores.
@@ -30,6 +31,8 @@ public final class OperationType extends DomainCatalog {
     public static final OperationType PRODUCT_CREATION = new OperationType("PRODUCT_CREATION", "Creación de Producto", "Creación de un producto");
     public static final OperationType PRODUCT_UPDATE = new OperationType("PRODUCT_UPDATE", "Actualización de Producto", "Actualización de un producto");
     public static final OperationType PRODUCT_PUBLISH = new OperationType("PRODUCT_PUBLISH", "Publicación de Producto", "Publicación de un producto");
+    public static final OperationType PRODUCT_SUSPEND = new OperationType("PRODUCT_SUSPEND", "Suspensión de Producto", "Retiro temporal de un producto del catálogo");
+    public static final OperationType PRODUCT_DISCONTINUE = new OperationType("PRODUCT_DISCONTINUE", "Descontinuación de Producto", "Retiro definitivo de un producto del catálogo");
     public static final OperationType PRODUCT_UNPUBLISH = new OperationType("PRODUCT_UNPUBLISH", "Despublicación de Producto", "Despublicación de un producto");
 
     public static final OperationType INVENTORY_ADD = new OperationType("INVENTORY_ADD", "Ingreso de Inventario", "Ingreso de mercancía a bodega");
@@ -51,6 +54,9 @@ public final class OperationType extends DomainCatalog {
     public static final OperationType ORDER_DISPATCH = new OperationType("ORDER_DISPATCH", "Despacho de Pedido", "Salida física del pedido");
     public static final OperationType ORDER_DELIVERY = new OperationType("ORDER_DELIVERY", "Entrega de Pedido", "Entrega confirmada del pedido");
     public static final OperationType ORDER_CANCELLATION = new OperationType("ORDER_CANCELLATION", "Cancelación de Pedido", "Cancelación del pedido");
+    public static final OperationType ORDER_OPERATOR_ASSIGN = new OperationType("ORDER_OPERATOR_ASSIGN", "Asignación de Operador", "Asignación del operador logístico a un pedido");
+    public static final OperationType PICKUP_REGISTER = new OperationType("PICKUP_REGISTER", "Recogida de Pedido", "Registro de unidades recogidas de un pedido");
+    public static final OperationType INCIDENT_UPDATE = new OperationType("INCIDENT_UPDATE", "Novedad Logística", "Reporte o atención de una novedad de un pedido");
 
     public static final OperationType INVOICE_GENERATION = new OperationType("INVOICE_GENERATION", "Generación de Factura", "Se emite una factura");
     public static final OperationType INVOICE_CANCELLATION = new OperationType("INVOICE_CANCELLATION", "Cancelación de Factura", "Se anula una factura emitida");

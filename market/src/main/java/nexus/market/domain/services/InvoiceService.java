@@ -51,6 +51,10 @@ public class InvoiceService {
                     "Solo se factura un pedido PAID.");
         }
 
+        if (invoices.findByOrderId(orderId).isPresent()) {
+            throw new BusinessException("INVOICE_ALREADY_EXISTS", "El pedido ya tiene factura.");
+        }
+
         var sellerId = products.findById(order.getItems().get(0).getProductId())
                 .orElseThrow(() -> new BusinessException("PRODUCT_NOT_FOUND", "Producto inexistente."))
                 .getSellerId();

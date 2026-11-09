@@ -217,7 +217,13 @@ public class GlobalExceptionHandler {
         if (code.equals("USER_ALREADY_EXISTS")
                 || code.equals("INVENTORY_ALREADY_EXISTS")
                 || code.equals("RETURN_ALREADY_EXISTS")
+                || code.equals("INVOICE_ALREADY_EXISTS")
                 || code.equals("INVALID_STATE_TRANSITION")
+                || code.equals("DUPLICATE_VARIANT")
+                || code.equals("DUPLICATE_SELLER_SKU")
+                || code.equals("PICKUP_EXCEEDS_REQUESTED")
+                || code.equals("PICKUP_INCOMPLETE")
+                || code.equals("INCIDENT_OPEN")
                 || code.equals("ADDRESS_LIMIT_EXCEEDED")) {
             return HttpStatus.CONFLICT;
         }

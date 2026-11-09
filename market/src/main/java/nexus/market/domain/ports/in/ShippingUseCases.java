@@ -20,7 +20,12 @@ public interface ShippingUseCases {
 
     void markInTransit(ShippingId shippingId);
 
-    void deliver(ShippingId shippingId);
+    /** Entrega el envío; {@code notes} (opcional) queda en el historial del pedido junto con el operador y la hora. */
+    void deliver(ShippingId shippingId, String notes);
+
+    default void deliver(ShippingId shippingId) {
+        deliver(shippingId, null);
+    }
 
     Optional<Shipping> findByOrderId(OrderId orderId);
 

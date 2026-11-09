@@ -108,8 +108,14 @@ class TransactionalRollbackIntegrationTest extends RestTestSupport {
         String admin = staffToken(SystemRole.ADMIN);
         SellerCatalog catalog = seedSellerCatalog(admin, new BigDecimal("1500.00")); // 10 unidades
         Account buyer = registerBuyer();
-        send(HttpMethod.POST, "/api/buyers/" + buyer.profileId() + "/cart/items", buyer.token(),
-                body("productId", catalog.productId(), "quantity", 11), 200);
+        Account first = registerBuyer();
+        // El carrito ya valida el stock; la reserva del pedido falla cuando otro comprador se llevó antes las unidades.
+        for (Account b : new Account[] { first, buyer }) {
+            send(HttpMethod.POST, "/api/buyers/" + b.profileId() + "/cart/items", b.token(),
+                    body("productId", catalog.productId(), "quantity", 6), 200);
+        }
+        send(HttpMethod.POST, "/api/buyers/" + first.profileId() + "/orders", first.token(),
+                body("shippingAddress", addressJson()), 201);
         long orders = count("orders");
         long items = count("order_items");
 

@@ -22,7 +22,12 @@ public interface OrderUseCases {
 
     void dispatch(OrderId orderId, WarehouseId warehouseId);
 
-    void deliver(OrderId orderId);
+    /** Entrega el pedido; {@code notes} (opcional) queda en su historial junto con el operador y la hora. */
+    void deliver(OrderId orderId, String notes);
+
+    default void deliver(OrderId orderId) {
+        deliver(orderId, null);
+    }
 
     void cancel(OrderId orderId);
 

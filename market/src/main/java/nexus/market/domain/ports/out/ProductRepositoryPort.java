@@ -7,6 +7,7 @@ import nexus.market.domain.models.Product;
 import nexus.market.domain.valueobjects.ProductId;
 import nexus.market.domain.valueobjects.ProductStatus;
 import nexus.market.domain.valueobjects.SellerId;
+import nexus.market.domain.valueobjects.SellerSku;
 
 /**
  * Puerto de salida para la persistencia de {@link Product} y consultas del
@@ -19,6 +20,17 @@ public interface ProductRepositoryPort {
     Optional<Product> findById(ProductId productId);
 
     List<Product> findBySellerId(SellerId sellerId);
+
+    /**
+     * Una página de los productos de un vendedor en cualquier estado, ordenada por nombre e id (orden estable).
+     * {@code statusCode}, si no es nulo, filtra por estado.
+     */
+    List<Product> findBySellerId(SellerId sellerId, String statusCode, int offset, int limit);
+
+    long countBySellerId(SellerId sellerId, String statusCode);
+
+    /** El producto de un vendedor con ese código comercial (único por vendedor). */
+    Optional<Product> findBySellerIdAndSellerSku(SellerId sellerId, SellerSku sellerSku);
 
     List<Product> findByStatus(ProductStatus status);
 

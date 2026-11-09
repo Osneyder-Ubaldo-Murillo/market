@@ -1,5 +1,6 @@
 package nexus.market.adapters.in.rest.requests;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import java.util.List;
 
@@ -21,9 +22,9 @@ public final class ReturnRequests {
      * ({@code DAMAGED}, {@code WRONG_ITEM}, {@code NOT_AS_DESCRIBED}, {@code OTHER}).
      */
     public record ReturnLineRequest(
-            @NotBlank(message = "productId es obligatorio") String productId,
-            @Positive(message = "quantity debe ser mayor a cero") int quantity,
-            @NotBlank(message = "reason es obligatorio") String reason) {
+            @NotBlank(message = "productId es obligatorio") @Schema(description = "Identificador del producto", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6") String productId,
+            @Positive(message = "quantity debe ser mayor a cero") @Schema(description = "Cantidad (mayor que cero)", example = "2") int quantity,
+            @NotBlank(message = "reason es obligatorio") @Schema(description = "Motivo de la devolución: DAMAGED, WRONG_ITEM, NOT_AS_DESCRIBED u OTHER", example = "DAMAGED", allowableValues = {"DAMAGED", "WRONG_ITEM", "NOT_AS_DESCRIBED", "OTHER"}) String reason) {
     }
 
     /** Solicitud de devolución de un pedido (al menos una línea). */
